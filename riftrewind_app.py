@@ -10,6 +10,8 @@ from datetime import datetime
 from riot_api_client import RiotApiClient
 from riftrewind_ml_engine import RiftRewindMLEngine
 from bedrock_insights import BedrockInsightsGenerator
+from enhanced_coaching import EnhancedCoachingAnalyzer
+from progressive_tracker import ProgressiveTracker
 
 class RiftRewindApp:
     """
@@ -25,6 +27,8 @@ class RiftRewindApp:
         self.aws_region = aws_region
         self.ml_engine = RiftRewindMLEngine()
         self.insights_generator = BedrockInsightsGenerator(aws_region)
+        self.coaching_analyzer = EnhancedCoachingAnalyzer()
+        self.tracker = ProgressiveTracker()
         self.player_cache = {}
         self.cache_timeout = 300  # 5 minutes
         logging.basicConfig(level=logging.INFO)
@@ -67,7 +71,31 @@ class RiftRewindApp:
             )
             self.logger.info("Natural language insights generation complete.")
 
-            # Step 4: Compile final report
+            # Step 4: Enhanced Coaching Analysis
+            self.logger.info("Performing enhanced coaching analysis...")
+            player_puuid = player_data['player_info']['puuid']
+            coaching_analysis = self.coaching_analyzer.analyze_death_patterns(
+                player_data['matches'], player_puuid
+            )
+            
+            # Step 5: Progressive Tracking
+            self.logger.info("Updating progressive tracking...")
+            player_id = f"{game_name}_{tag_line}"
+            session_data = {
+                'match_count': match_count,
+                'stats': ml_insights['player_profile'],
+                'coaching_feedback': coaching_analysis
+            }
+            self.tracker.save_session_data(player_id, session_data)
+            progression = self.tracker.analyze_progression(player_id)
+            
+            # Step 6: Enhanced AI Insights with Coaching
+            self.logger.info("Generating enhanced coaching insights...")
+            enhanced_insights = self.insights_generator.generate_enhanced_coaching_insights(
+                player_data, ml_insights, coaching_analysis
+            )
+
+            # Step 7: Compile final report
             processing_time = time.time() - start_time
             report = {
                 'success': True,
@@ -88,6 +116,11 @@ class RiftRewindApp:
                     'strengths': strengths
                 },
                 'ai_insights': ai_insights,
+                'enhanced_coaching': {
+                    'tactical_analysis': coaching_analysis,
+                    'progression_data': progression,
+                    'enhanced_insights': enhanced_insights
+                },
                 'processing_time': round(processing_time, 2),
                 'generated_at': datetime.now().isoformat()
             }

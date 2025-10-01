@@ -109,8 +109,84 @@ if st.button("🔍 Analyze Player", type="primary"):
                 else:
                     st.info("Timeline data analysis requires raw match data to be included in the response")
                 
-                # Show other insights
-                st.header("🎯 AI Insights")
+                # Enhanced Coaching Analysis Section  
+                if 'enhanced_coaching' in result:
+                    st.header("🏆 Enhanced Coaching Analysis")
+                    
+                    coaching_tab1, coaching_tab2, coaching_tab3 = st.tabs([
+                        "⚔️ Tactical Analysis", 
+                        "🎯 Strategic Insights", 
+                        "📈 Progressive Tracking"
+                    ])
+                    
+                    coaching_data = result['enhanced_coaching']
+                    
+                    with coaching_tab1:
+                        st.subheader("⚔️ Tactical Death Pattern Analysis")
+                        if 'tactical_analysis' in coaching_data:
+                            tactical = coaching_data['tactical_analysis']
+                            
+                            # Display tactical recommendations
+                            if 'tactical_recommendations' in tactical:
+                                st.write("**🎯 Tactical Recommendations:**")
+                                for rec in tactical['tactical_recommendations']:
+                                    st.write(f"• {rec}")
+                            
+                            # Display death timing patterns
+                            if 'death_timing_patterns' in tactical:
+                                st.write("**⏰ Death Timing Analysis:**")
+                                timing = tactical['death_timing_patterns']
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Most Dangerous Phase", timing.get('most_dangerous_phase', 'N/A'))
+                                with col2:
+                                    st.metric("Risk Pattern", timing.get('pattern_type', 'N/A'))
+                    
+                    with coaching_tab2:
+                        st.subheader("🎯 Strategic Positioning Insights")
+                        if 'strategic_recommendations' in coaching_data['tactical_analysis']:
+                            st.write("**🗺️ Strategic Recommendations:**")
+                            for rec in coaching_data['tactical_analysis']['strategic_recommendations']:
+                                st.write(f"• {rec}")
+                    
+                    with coaching_tab3:
+                        st.subheader("📈 Progressive Performance Tracking")
+                        if 'progression_data' in coaching_data:
+                            progression = coaching_data['progression_data']
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Sessions Played", progression.get('session_count', 0))
+                            with col2:
+                                st.metric("Improvement Goals", len(progression.get('improvement_goals', [])))
+                            with col3:
+                                st.metric("Progression Score", f"{progression.get('progression_score', 0):.1f}")
+                            
+                            # Display improvement goals
+                            if progression.get('improvement_goals'):
+                                st.write("**🎯 Current Improvement Goals:**")
+                                for goal in progression['improvement_goals']:
+                                    st.write(f"• {goal}")
+                
+                # Enhanced AI Insights
+                st.header("🤖 Enhanced AI Insights")
+                if result.get('enhanced_coaching', {}).get('enhanced_insights'):
+                    enhanced = result['enhanced_coaching']['enhanced_insights']
+                    
+                    if enhanced.get('tactical_coaching'):
+                        st.subheader("⚔️ Tactical Coaching")
+                        st.write(enhanced['tactical_coaching'])
+                    
+                    if enhanced.get('strategic_coaching'):  
+                        st.subheader("🎯 Strategic Coaching")
+                        st.write(enhanced['strategic_coaching'])
+                    
+                    if enhanced.get('development_plan'):
+                        st.subheader("📋 Development Plan")
+                        st.write(enhanced['development_plan'])
+                
+                # Basic AI Insights
+                st.header("🎯 Basic Analysis")
                 playstyle = result['ml_analysis']['playstyle']
                 st.write(f"**Playstyle:** {playstyle['playstyle_name']}")
                 st.write(playstyle['description'])

@@ -313,6 +313,248 @@ Keep it light and engaging (100-150 words)."""
             'total_games': total_games
         }
     
+    def generate_enhanced_coaching_insights(self, player_data: Dict, ml_insights: Dict, coaching_analysis: Dict) -> Dict:
+        """Generate comprehensive coaching insights based on enhanced analysis"""
+        
+        insights = {}
+        
+        try:
+            # Tactical Coaching based on death patterns
+            if coaching_analysis.get('tactical_insights'):
+                tactical_data = coaching_analysis['tactical_insights']
+                insights['tactical_coaching'] = self._generate_tactical_coaching(tactical_data)
+            
+            # Strategic Coaching based on macro patterns  
+            if coaching_analysis.get('strategic_insights'):
+                strategic_data = coaching_analysis['strategic_insights']
+                insights['strategic_coaching'] = self._generate_strategic_coaching(strategic_data)
+            
+            # Progressive Development Plan
+            if coaching_analysis.get('improvement_areas'):
+                insights['development_plan'] = self._generate_development_plan(
+                    coaching_analysis['improvement_areas'], tactical_data, strategic_data
+                )
+            
+            # Comprehensive Performance Summary
+            insights['performance_summary'] = self._generate_enhanced_performance_summary(
+                player_data, ml_insights, coaching_analysis
+            )
+            
+        except Exception as e:
+            print(f"Error generating enhanced coaching insights: {e}")
+            insights['error'] = "Unable to generate enhanced coaching insights"
+        
+        return insights
+    
+    def _generate_tactical_coaching(self, tactical_data: Dict) -> str:
+        """Generate tactical coaching based on death pattern analysis"""
+        
+        total_deaths = tactical_data.get('total_deaths', 0)
+        phase_dist = tactical_data.get('phase_distribution', {})
+        zone_dist = tactical_data.get('zone_distribution', {})
+        recommendations = tactical_data.get('tactical_recommendations', [])
+        
+        coaching = f"""🎯 **TACTICAL COACHING ANALYSIS**
+
+**Death Pattern Summary:**
+• Total Deaths Analyzed: {total_deaths}
+• Early Game: {phase_dist.get('early', 0):.1f}% | Mid Game: {phase_dist.get('mid', 0):.1f}% | Late Game: {phase_dist.get('late', 0):.1f}%
+
+**Problem Areas Identified:**
+"""
+        
+        # Add zone-specific advice
+        for zone, percentage in zone_dist.items():
+            if percentage > 20:  # Significant death concentration
+                if zone == 'enemy_jungle':
+                    coaching += f"• **Enemy Jungle Deaths ({percentage:.1f}%)**: You're dying too often while invading. Ward deeper before entering enemy territory and always have an escape route planned.\n"
+                elif zone == 'river':
+                    coaching += f"• **River Deaths ({percentage:.1f}%)**: Vision control issues in river. Ward river brushes before rotating and avoid face-checking.\n"
+                elif zone == 'lane':
+                    coaching += f"• **Lane Deaths ({percentage:.1f}%)**: Laning phase positioning needs work. Respect enemy jungle gank timings and maintain proper minion wave positioning.\n"
+        
+        # Add phase-specific advice
+        if phase_dist.get('late', 0) > 35:
+            coaching += f"""
+**🚨 Late Game Critical Issue:**
+You're dying too much in late game ({phase_dist.get('late', 0):.1f}% of deaths). Late game deaths cost your team the most:
+• Stay behind your frontline in teamfights
+• Don't chase kills - protect carries instead
+• Ward before checking objectives
+• Group with team instead of splitting
+"""
+        
+        coaching += "\n**Immediate Action Items:**\n"
+        for i, rec in enumerate(recommendations[:3], 1):
+            coaching += f"{i}. {rec}\n"
+        
+        return coaching
+    
+    def _generate_strategic_coaching(self, strategic_data: Dict) -> str:
+        """Generate strategic coaching based on macro gameplay patterns"""
+        
+        time_clusters = strategic_data.get('death_timing_clusters', {})
+        risk_percentage = strategic_data.get('risk_percentage', 0)
+        recommendations = strategic_data.get('strategic_recommendations', [])
+        
+        coaching = f"""🧠 **STRATEGIC COACHING ANALYSIS**
+
+**Macro Decision Making:**
+• High-Risk Deaths: {risk_percentage:.1f}% of your deaths
+• Death Timing Patterns: {len(time_clusters)} distinct danger windows identified
+
+"""
+        
+        # Analyze timing clusters
+        if time_clusters:
+            most_dangerous = max(time_clusters.items(), key=lambda x: x[1])
+            coaching += f"""**⏰ Critical Timing Window:**
+• {most_dangerous[0]}-{most_dangerous[0]+5} minute mark: {most_dangerous[1]} deaths
+• This is your most dangerous period - extra caution needed
+• Likely causes: Power spike misunderstanding, objective setup errors
+
+"""
+        
+        # Risk assessment advice
+        if risk_percentage > 30:
+            coaching += f"""**🎯 Risk Management Priority:**
+Your high-risk death rate ({risk_percentage:.1f}%) suggests aggressive decision making without proper setup:
+
+**Immediate Fixes:**
+• Don't contest objectives without vision advantage
+• Count enemy cooldowns before engaging
+• Always have escape route planned
+• Coordinate with team before risky plays
+"""
+        
+        coaching += "\n**Strategic Recommendations:**\n"
+        for i, rec in enumerate(recommendations, 1):
+            coaching += f"{i}. {rec}\n"
+        
+        return coaching
+    
+    def _generate_development_plan(self, improvement_areas: List[str], tactical_data: Dict, strategic_data: Dict) -> str:
+        """Generate 4-week progressive development plan"""
+        
+        plan = """📈 **4-WEEK PROGRESSIVE DEVELOPMENT PLAN**
+
+"""
+        
+        # Prioritize improvement areas
+        priority_areas = improvement_areas[:3]  # Top 3 issues
+        
+        for week in range(1, 5):
+            plan += f"""**Week {week} Focus:**
+"""
+            
+            if week == 1:  # Foundation
+                plan += "**Foundation Building** - Awareness and Recognition\n"
+                if priority_areas:
+                    plan += f"• Primary Focus: {priority_areas[0]}\n"
+                plan += "• Practice: Review replays daily, identify problem patterns\n"
+                plan += "• Goal: Recognize dangerous situations 2 seconds earlier\n"
+                
+            elif week == 2:  # Skill Development
+                plan += "**Skill Development** - Mechanical Improvements\n"
+                if len(priority_areas) > 1:
+                    plan += f"• Primary Focus: {priority_areas[1]}\n"
+                plan += "• Practice: 15 minutes pre-game positioning drills\n"
+                plan += "• Goal: Reduce deaths in primary problem area by 30%\n"
+                
+            elif week == 3:  # Application
+                plan += "**Application & Practice** - In-Game Implementation\n"
+                if len(priority_areas) > 2:
+                    plan += f"• Primary Focus: {priority_areas[2]}\n"
+                plan += "• Practice: Conscious decision-making in ranked games\n"
+                plan += "• Goal: Apply new positioning consistently for 70% of games\n"
+                
+            else:  # Mastery
+                plan += "**Mastery & Consistency** - Habit Formation\n"
+                plan += "• Primary Focus: Integrate all improvements\n"
+                plan += "• Practice: Full game awareness and positioning\n"
+                plan += "• Goal: Demonstrate consistent improvement across all metrics\n"
+            
+            plan += "\n"
+        
+        plan += """**Success Metrics to Track:**
+• Deaths per game (target: reduce by 2-3)
+• Late game deaths (target: <30% of total)
+• High-risk deaths (target: <20% of total)
+• Consistent improvement across 5+ games
+
+**Weekly Check-ins:**
+Run RiftRewind analysis each week to track your progress and adjust focus areas."""
+        
+        return plan
+    
+    def _generate_enhanced_performance_summary(self, player_data: Dict, ml_insights: Dict, coaching_analysis: Dict) -> str:
+        """Generate comprehensive performance summary with all analysis integrated"""
+        
+        player_info = player_data.get('player_info', {})
+        matches = player_data.get('recent_matches', [])
+        
+        if not matches:
+            return "No recent match data available for analysis."
+        
+        total_games = len(matches)
+        wins = sum(1 for match in matches if match.get('win', False))
+        win_rate = wins / total_games if total_games > 0 else 0
+        
+        tactical_insights = coaching_analysis.get('tactical_insights', {})
+        strategic_insights = coaching_analysis.get('strategic_insights', {})
+        improvement_areas = coaching_analysis.get('improvement_areas', [])
+        
+        summary = f"""🎮 **COMPREHENSIVE PERFORMANCE ANALYSIS**
+
+**Player Overview:**
+• Summoner: {player_info.get('name', 'Unknown')}#{player_info.get('tag', '')}
+• Rank: {player_info.get('rank', 'Unranked')}
+• Recent Performance: {wins}W/{total_games-wins}L ({win_rate:.1%} win rate)
+
+**🎯 Tactical Assessment:**
+• Death Analysis: {tactical_insights.get('total_deaths', 0)} deaths across {total_games} games
+• Avg Deaths/Game: {tactical_insights.get('total_deaths', 0) / max(total_games, 1):.1f}
+"""
+
+        # Add phase analysis
+        phase_dist = tactical_insights.get('phase_distribution', {})
+        if phase_dist:
+            summary += f"• Game Phase Deaths: Early {phase_dist.get('early', 0):.0f}% | Mid {phase_dist.get('mid', 0):.0f}% | Late {phase_dist.get('late', 0):.0f}%\n"
+
+        summary += f"""
+**🧠 Strategic Assessment:**
+• Risk Management: {strategic_insights.get('risk_percentage', 0):.1f}% high-risk deaths
+• Decision Making: {"Needs Focus" if strategic_insights.get('risk_percentage', 0) > 30 else "Good Control"}
+
+**📊 Key Strengths:**"""
+
+        # Identify strengths
+        if phase_dist.get('late', 0) < 30:
+            summary += "\n• Good late-game positioning and patience"
+        if strategic_insights.get('risk_percentage', 0) < 25:
+            summary += "\n• Strong risk assessment and decision making"
+        if tactical_insights.get('total_deaths', 0) / max(total_games, 1) < 6:
+            summary += "\n• Low death rate shows good survival instincts"
+
+        summary += f"""
+
+**⚠️ Priority Improvement Areas:**"""
+        
+        for i, area in enumerate(improvement_areas[:3], 1):
+            summary += f"\n{i}. {area}"
+        
+        summary += f"""
+
+**🎯 This Week's Focus:**
+Based on your death pattern analysis, concentrate on:
+1. **Immediate**: {improvement_areas[0] if improvement_areas else "General positioning improvement"}
+2. **Secondary**: {"Objective positioning" if tactical_insights.get('objective_deaths') else "Game timing awareness"}
+3. **Long-term**: {"Strategic decision making" if strategic_insights.get('risk_percentage', 0) > 25 else "Consistency in execution"}
+
+Run another analysis in 5-10 games to track your improvement!"""
+        
+        return summary
+
     def generate_complete_insights_package(self, player_data: Dict, ml_insights: Dict, comparison_data: Optional[Dict] = None) -> Dict:
         """Generate all AI insights in one comprehensive package"""
         
