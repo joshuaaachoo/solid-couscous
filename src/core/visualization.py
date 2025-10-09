@@ -570,13 +570,19 @@ def create_summoners_rift_heatmap(matches_data, player_puuid):
     
     return fig
 
-def create_map_overlay_heatmap(matches_data, player_puuid):
+def create_map_overlay_heatmap(matches: list, puuid: str, use_precise: bool = True) -> str:
     """
-    Creates a death heatmap overlaid on the actual Summoner's Rift map image
+    Create a heatmap overlay on Summoner's Rift map for death positions.
+    
+    Args:
+        matches: List of match data with timelines
+        puuid: Player's PUUID
+        use_precise: If True, use KDE for smooth heatmap. If False or on error, use scatter points.
     """
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
     import numpy as np
+    from scipy.stats import gaussian_kde
     from scipy.ndimage import gaussian_filter
     from io import BytesIO
     import base64
@@ -586,7 +592,7 @@ def create_map_overlay_heatmap(matches_data, player_puuid):
     matches_with_timeline = 0
     
     # Extract death positions (same logic as other functions)
-    for match in matches_data:
+    for match in matches:
         total_matches_processed += 1
         
         match_info = None
@@ -599,7 +605,7 @@ def create_map_overlay_heatmap(matches_data, player_puuid):
             
             player_participant = None
             for participant in match_info['participants']:
-                if participant.get('puuid') == player_puuid:
+                if participant.get('puuid') == puuid:
                     player_participant = participant
                     participant_id = participant.get('participantId')
                     break
@@ -613,7 +619,7 @@ def create_map_overlay_heatmap(matches_data, player_puuid):
             
             player_participant = None
             for participant in match_info.get('participants', []):
-                if participant.get('puuid') == player_puuid:
+                if participant.get('puuid') == puuid:
                     player_participant = participant
                     participant_id = participant.get('participantId')
                     break
@@ -655,87 +661,148 @@ def create_map_overlay_heatmap(matches_data, player_puuid):
     if not deaths_data or len(deaths_data) < 2:
         return None
     
-    # Load and display the actual Summoner's Rift map image
+    # Load and display the Summoner's Rift map as background
     try:
         from PIL import Image
         import os
         
-        # Load the PNG image
-        map_image_path = os.path.join(os.path.dirname(__file__), 'assets', 'summoners-rift-map.png')
-        if not os.path.exists(map_image_path):
-            # Fallback to current directory
-            map_image_path = os.path.join('assets', 'summoners-rift-map.png')
+        # Try multiple paths to find the map
+        possible_paths = [
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'summoners-rift-map.png'),
+            os.path.join('assets', 'summoners-rift-map.png'),
+            '/Users/joshs/RiftRewindClean/assets/summoners-rift-map.png'
+        ]
         
-        map_image = Image.open(map_image_path)
+        map_image = None
+        for map_path in possible_paths:
+            if os.path.exists(map_path):
+                map_image = Image.open(map_path)
+                print(f"Loaded map from: {map_path}")
+                break
         
-        # Create the figure
-        fig, ax = plt.subplots(figsize=(14, 14))
-        fig.patch.set_facecolor('#000000')  # Black background
+        if map_image is None:
+            raise FileNotFoundError("Could not find summoners-rift-map.png")
         
-        # Display the map image as background with full opacity
-        # The image coordinates should match League's coordinate system (0-14870 x 0-14980)
-        ax.imshow(map_image, extent=[0, 14870, 0, 14980], aspect='equal', alpha=1.0)
+        # Create the figure with square aspect ratio
+        fig, ax = plt.subplots(figsize=(10, 10))
+        fig.patch.set_facecolor('#0a0a0a')
+        
+        # Display the map image as background
+        ax.imshow(map_image, extent=[0, 14870, 0, 14980], aspect='equal', alpha=1.0, origin='upper')
         
     except Exception as e:
         print(f"Could not load map image: {e}")
-        # Fallback to stylized background
-        fig, ax = plt.subplots(figsize=(12, 12))
-        ax.set_facecolor('#2d4a2d')
-        fig.patch.set_facecolor('#1a1a1a')
+        # Fallback to dark background
+        fig, ax = plt.subplots(figsize=(10, 10))
+        ax.set_facecolor('#1a1a2e')
+        fig.patch.set_facecolor('#0a0a0a')
     
     # Extract coordinates and create heatmap
     x_coords = [d['x'] for d in deaths_data]
     y_coords = [d['y'] for d in deaths_data]
     
+    # Debug: print some sample coordinates
+    if len(deaths_data) > 0 and len(deaths_data) <= 10:
+        print(f"\n=== DEATH HEATMAP DEBUG ===")
+        print(f"Total deaths: {len(deaths_data)}")
+        print(f"Sample coordinates: {list(zip(x_coords[:3], y_coords[:3]))}")
+        print(f"===========================\n")
+    
+    # Always use KDE heatmap, even with few deaths
+    # Add small random noise to prevent singular matrix with identical positions
+    if len(deaths_data) < 3 or (max(x_coords) - min(x_coords) < 100) or (max(y_coords) - min(y_coords) < 100):
+        print(f"Few deaths or low variation detected, adding noise to enable KDE")
+        # Add tiny random noise (±50 units) to enable KDE
+        import random
+        x_coords = [x + random.uniform(-50, 50) for x in x_coords]
+        y_coords = [y + random.uniform(-50, 50) for y in y_coords]
+    
     # Create uniform base layer covering entire map + death density overlay
     from scipy.stats import gaussian_kde
+    from scipy.ndimage import gaussian_filter
     
-    # Create high-resolution coordinate meshgrid covering entire map
-    x_min, x_max = 0, 14870
-    y_min, y_max = 0, 14980
-    xx, yy = np.mgrid[x_min:x_max:150j, y_min:y_max:150j]
-    
-    # Create base layer - uniform low value across entire map
-    base_density = np.full(xx.shape, 0.2)  # Uniform purple base layer
-    
-    # Calculate KDE death density
-    death_positions = np.vstack([x_coords, y_coords])
-    kde = gaussian_kde(death_positions)
-    kde.set_bandwidth(bw_method=0.25)
-    
-    positions = np.vstack([xx.ravel(), yy.ravel()])
-    death_density = kde(positions).T.reshape(xx.shape)
-    
-    # Normalize death density and add to base
-    if death_density.max() > 0:
-        death_density = death_density / death_density.max() * 0.8  # Scale to 0-0.8
-        combined_density = base_density + death_density  # Base 0.2 + death 0-0.8 = 0.2-1.0
-    else:
-        combined_density = base_density
-    
-    # Ensure values are in 0-1 range
-    combined_density = np.clip(combined_density, 0, 1)
-    
-    # Create full-map heatmap overlay (no masking - covers entire map)
-    extent = [0, 14870, 0, 14980]
-    im = ax.imshow(combined_density, origin='lower', extent=extent,
-                   cmap='plasma', alpha=0.65, interpolation='bicubic', vmin=0.2, vmax=1.0)
-    
-    # Add major objectives as markers (optional, can be toggled)
-    show_objectives = False  # Set to True if you want objective markers
-    
-    if show_objectives:
-        objectives = [
-            {"name": "Blue Nexus", "x": 1748, "y": 1562, "color": "cyan", "size": 150, "marker": "^"},
-            {"name": "Red Nexus", "x": 13052, "y": 13224, "color": "red", "size": 150, "marker": "^"},
-            {"name": "Baron", "x": 5007, "y": 10471, "color": "purple", "size": 120, "marker": "D"},
-            {"name": "Dragon", "x": 9866, "y": 4414, "color": "orange", "size": 120, "marker": "D"},
-        ]
+    try:
+        # Calculate KDE death density with improved circular smoothing
+        # SWAP X and Y for the KDE calculation to fix diagonal flip
+        death_positions = np.vstack([y_coords, x_coords])  # Y first, then X
+        kde = gaussian_kde(death_positions)
         
-        for obj in objectives:
-            ax.scatter(obj["x"], obj["y"], c=obj["color"], s=obj["size"],
-                      marker=obj["marker"], edgecolors='black', linewidth=1,
-                      label=obj["name"], zorder=10, alpha=0.8)
+        # Auto-detect or use specified precision
+        if use_precise is None:
+            # For single match (few deaths), use more precise bandwidth
+            use_precise = len(deaths_data) <= 10
+        
+        # Set parameters based on precision level
+        if use_precise:
+            # More precise for individual matches - smaller bandwidth
+            kde.set_bandwidth(bw_method=0.15)  # Tighter, more precise spots
+            sigma = 2.5  # Much higher for circular appearance
+            base_level = 0.15  # Lower base for clearer spots
+        else:
+            # For overall heatmap, also use tighter bandwidth for accuracy
+            kde.set_bandwidth(bw_method=0.2)  # Slightly tighter than before
+            sigma = 2.5  # Same circular smoothing
+            base_level = 0.1  # Very low base to show true death patterns
+        
+        # Create high-resolution coordinate meshgrid covering entire map
+        # League's map is 14870x14980, but let's try slightly adjusted bounds for better alignment
+        x_min, x_max = 0, 14870
+        y_min, y_max = 0, 14980
+        # Swap Y and X in mgrid to match the swapped death_positions
+        yy, xx = np.mgrid[y_min:y_max:150j, x_min:x_max:150j]
+        
+        # Create base layer - uniform low value across entire map
+        base_density = np.full(yy.shape, base_level)  # Use yy.shape since we swapped
+        
+        positions = np.vstack([yy.ravel(), xx.ravel()])  # Y first, then X to match death_positions
+        death_density = kde(positions).T.reshape(xx.shape)
+        
+        # Apply additional Gaussian smoothing for more circular appearance
+        death_density = gaussian_filter(death_density, sigma=sigma)
+        
+        # Normalize death density and add to base
+        if death_density.max() > 0:
+            death_density = death_density / death_density.max() * 0.8  # Scale to 0-0.8
+            combined_density = base_density + death_density  # Base 0.2 + death 0-0.8 = 0.2-1.0
+        else:
+            combined_density = base_density
+        
+        # Ensure values are in 0-1 range
+        combined_density = np.clip(combined_density, 0, 1)
+        
+        # FLIP the density array vertically to match imshow's origin='upper'
+        combined_density = np.flipud(combined_density)
+        
+        # Create full-map heatmap overlay (no masking - covers entire map)
+        # Use origin='upper' to match map image - both use same coordinate system
+        extent = [0, 14870, 0, 14980]
+        
+        # Add the KDE heatmap using the exact same coordinates as circles/X marks
+        im = ax.imshow(combined_density, origin='upper', extent=extent,
+                       cmap='plasma', alpha=0.65, interpolation='bicubic', vmin=base_level, vmax=1.0, zorder=4)
+        
+        # Add colorbar for KDE visualization
+        cbar = plt.colorbar(im, ax=ax, shrink=0.6, pad=0.02, aspect=25)
+        cbar.set_label('Deaths', rotation=270, labelpad=15, color='white', fontsize=11)
+        cbar.ax.tick_params(colors='white', labelsize=9)
+        cbar.ax.patch.set_facecolor('#0a0a0a')
+        cbar.ax.patch.set_alpha(0.8)
+        
+    except (np.linalg.LinAlgError, ValueError) as e:
+        # KDE failed - this should rarely happen now with noise added
+        print(f"KDE failed even with noise ({e}), using scatter plot fallback")
+        
+        # Plot death locations with consistent purple gradient style
+        for x, y in zip(x_coords, y_coords):
+            # Purple glowing circles for deaths
+            for size, alpha in [(800, 0.3), (500, 0.5), (250, 0.7)]:
+                ax.scatter(x, y, c='#764ba2', s=size, alpha=alpha, edgecolors='none', zorder=5)
+            # Center marker
+            ax.scatter(x, y, c='#ff00ff', s=100, marker='o', 
+                      edgecolors='white', linewidth=2, alpha=0.9, zorder=10)
+    
+    # Disable objective markers
+    show_objectives = False  # Disabled - no longer needed
     
     # Customize the plot with adjusted limits for better alignment
     ax.set_xlim(0, 14870)
@@ -743,32 +810,15 @@ def create_map_overlay_heatmap(matches_data, player_puuid):
     ax.set_aspect('equal')
     ax.axis('off')  # Remove axes for cleaner look
     
-    # Add title
-    fig.suptitle(f'Death Heatmap on Summoner\'s Rift\n{len(deaths_data)} deaths analyzed', 
-                fontsize=18, fontweight='bold', color='white', y=0.95)
-    
-    # Add colorbar for heatmap
-    if 'im' in locals():
-        cbar = plt.colorbar(im, ax=ax, shrink=0.7, pad=0.02, aspect=30)
-        cbar.set_label('Death Density', rotation=270, labelpad=20, color='white', fontsize=12)
-        cbar.ax.tick_params(colors='white')
-        # Make colorbar background semi-transparent
-        cbar.ax.patch.set_facecolor('black')
-        cbar.ax.patch.set_alpha(0.7)
-    
-    # Add legend for objectives only if shown
-    if show_objectives and 'objectives' in locals():
-        legend = ax.legend(loc='upper left', bbox_to_anchor=(0.02, 0.98), 
-                          fontsize=9, frameon=True, facecolor='black', 
-                          edgecolor='white', framealpha=0.8)
-        for text in legend.get_texts():
-            text.set_color('white')
+    # Add title with gradient-style text
+    title_text = f'{len(deaths_data)} deaths'
+    fig.suptitle(title_text, fontsize=16, fontweight='bold', color='#c7a2ff', y=0.98, alpha=0.8)
     
     plt.tight_layout()
     
     # Convert to base64 for Streamlit
     buffer = BytesIO()
-    plt.savefig(buffer, format='png', facecolor='#1a1a1a', dpi=150, 
+    plt.savefig(buffer, format='png', facecolor='#1a1a1a', dpi=120, 
                 bbox_inches='tight', pad_inches=0.1)
     buffer.seek(0)
     image_base64 = base64.b64encode(buffer.getvalue()).decode()

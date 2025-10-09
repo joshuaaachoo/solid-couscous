@@ -1,24 +1,18 @@
 from dotenv import load_dotenv
 load_dotenv()
 import os
-import sys
-from pathlib import Path
 import asyncio
 import json
 import logging
 import time
 from typing import Dict, List, Optional
 from datetime import datetime
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
-
-from api.riot_api_client import RiotApiClient
-from ai_coach.bedrock_insights import BedrockInsightsGenerator
-# ML engine and other imports commented out - focusing on AI coaching
-# from riftrewind_ml_engine import RiftRewindMLEngine
-# from enhanced_coaching import EnhancedCoachingAnalyzer
-# from progressive_tracker import ProgressiveTracker
+from riot_api_client import RiotApiClient
+from riftrewind_ml_engine import RiftRewindMLEngine
+from bedrock_insights import BedrockInsightsGenerator
+from enhanced_coaching import EnhancedCoachingAnalyzer
+from progressive_tracker import ProgressiveTracker
+# Removed vision_control_ml import for SageMaker migration
 
 class RiftRewindApp:
     """
@@ -32,11 +26,10 @@ class RiftRewindApp:
     def __init__(self, riot_api_key: str, aws_region: str = 'us-east-1'):
         self.riot_api_key = riot_api_key
         self.aws_region = aws_region
-        # ML engine commented out - focusing on AI coaching with Bedrock
-        # self.ml_engine = RiftRewindMLEngine()
+        self.ml_engine = RiftRewindMLEngine()  # Now with SageMaker production endpoint!
         self.insights_generator = BedrockInsightsGenerator(aws_region)
-        # self.coaching_analyzer = EnhancedCoachingAnalyzer()
-        # self.tracker = ProgressiveTracker()
+        self.coaching_analyzer = EnhancedCoachingAnalyzer()
+        self.tracker = ProgressiveTracker()
         # Real SageMaker ward detection now integrated!
         self.player_cache = {}
         self.cache_timeout = 300  # 5 minutes

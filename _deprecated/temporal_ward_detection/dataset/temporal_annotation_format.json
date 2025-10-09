@@ -1,0 +1,66 @@
+# Extended Temporal Ward Annotation Format
+# Each ward annotation now includes temporal context data
+#
+# Directory structure:
+# annotations/
+#   ├── visual/           # Traditional YOLO format (.txt)
+#   ├── temporal/         # Temporal sequence data (.json)
+#   └── combined/         # Combined features (.json)
+#
+# Example temporal annotation (ward_001_temporal.json):
+{
+    "ward_id": "ward_001",
+    "frame_sequence": [0, 1, 2, 3, 4, 5],  # Frame numbers in sequence
+    "ward_placement_frame": 3,               # When ward was actually placed
+    "player_positions": [                    # Player position over time
+        {"frame": 0, "x": 400, "y": 300, "timestamp": 0.0},
+        {"frame": 1, "x": 420, "y": 310, "timestamp": 0.33},
+        {"frame": 2, "x": 440, "y": 320, "timestamp": 0.66},
+        {"frame": 3, "x": 460, "y": 330, "timestamp": 1.0},   # Ward placed here
+        {"frame": 4, "x": 480, "y": 340, "timestamp": 1.33},
+        {"frame": 5, "x": 500, "y": 350, "timestamp": 1.66}
+    ],
+    "inventory_states": [                    # Inventory changes over time
+        {"frame": 0, "trinket_charges": 2, "control_wards": 1, "trinket_cooldown": 0.0},
+        {"frame": 1, "trinket_charges": 2, "control_wards": 1, "trinket_cooldown": 0.0},
+        {"frame": 2, "trinket_charges": 2, "control_wards": 1, "trinket_cooldown": 0.0},
+        {"frame": 3, "trinket_charges": 1, "control_wards": 1, "trinket_cooldown": 60.0},  # Used trinket
+        {"frame": 4, "trinket_charges": 1, "control_wards": 1, "trinket_cooldown": 59.67},
+        {"frame": 5, "trinket_charges": 1, "control_wards": 1, "trinket_cooldown": 59.34}
+    ],
+    "ward_info": {
+        "type": "stealth_ward",              # Ward type
+        "position": {"x": 460, "y": 330},   # Final ward position
+        "ownership": "player",               # Ground truth ownership
+        "confidence": 1.0,                   # Annotation confidence
+        "placement_context": "river_bush"    # Context/location type
+    },
+    "extracted_features": {                  # Pre-computed temporal features
+        "movement": {
+            "avg_velocity": 60.2,
+            "velocity_variance": 12.4,
+            "movement_smoothness": 0.85
+        },
+        "inventory": {
+            "trinket_usage_rate": 1.0,
+            "trinket_usage_count": 1
+        },
+        "spatial": {
+            "min_distance": 0.0,
+            "placement_distance": 0.0,
+            "approach_pattern": "direct"
+        },
+        "timing": {
+            "time_before_placement": 1.0,
+            "dwell_time_score": 0.16
+        }
+    }
+}
+
+# How to collect this data:
+# 1. Record gameplay sessions while manually tracking:
+#    - Your champion position each frame
+#    - Your inventory state (wards, cooldowns)
+#    - Exact moment you place wards
+# 2. Use the TemporalDataCollector to automatically extract features
+# 3. Manually verify ownership labels for training accuracy

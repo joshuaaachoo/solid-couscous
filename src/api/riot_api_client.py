@@ -130,8 +130,11 @@ class RiotApiClient:
         batch_size = 100
         while len(match_ids) < count and start_index < 1000:
             current_batch = min(batch_size, count - len(match_ids))
-            url = (f"{self.baseurls['match']}/lol/match/v5/matches/by-puuid/{puuid}/ids"
-                   f"?start={start_index}&count={current_batch}&queue={queue_type}")
+            # If queue_type is None or 0, don't filter by queue (get all game modes)
+            if queue_type is None or queue_type == 0:
+                url = f"{self.baseurls['match']}/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start_index}&count={current_batch}"
+            else:
+                url = f"{self.baseurls['match']}/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start_index}&count={current_batch}&queue={queue_type}"
             batch_ids = await self._make_request(url)
             if not batch_ids or len(batch_ids) == 0:
                 break
@@ -205,6 +208,7 @@ class RiotApiClient:
             'championId': player_data.get('championId'),
             'championName': player_data.get('championName'),
             'teamPosition': player_data.get('teamPosition'),
+            'teamId': player_data.get('teamId'),
             'kills': player_data.get('kills'),
             'deaths': player_data.get('deaths'),
             'assists': player_data.get('assists'),

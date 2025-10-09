@@ -1,0 +1,114 @@
+{
+  "match_count": 20,
+  "stats": {
+    "total_games": 20,
+    "wins": 13,
+    "losses": 7,
+    "win_rate": 0.65,
+    "avg_kda": 4.83,
+    "avg_cs_per_min": 5.545158508422819,
+    "avg_damage_per_min": 893.735534965241,
+    "avg_gold_per_min": 452.30879492196635,
+    "avg_vision_per_min": 0.46632712646571023,
+    "primary_role": "MIDDLE",
+    "champion_diversity": 7,
+    "avg_game_length": 27.949166666666667,
+    "recent_form": 0.8,
+    "recent_kda": 5.725,
+    "kda_consistency": 0.17335135339279287,
+    "performance_consistency": 0.37021582383908147,
+    "avg_kill_participation": 0.5064758274290331,
+    "avg_death_rate": 0.18202127132390505,
+    "avg_efficiency_score": 2.919417787467278,
+    "role_distribution": {
+      "MIDDLE": 13,
+      "TOP": 7
+    },
+    "champion_performance": {
+      "166": {
+        "games": 13,
+        "win_rate": 0.692,
+        "avg_kda": 6.213,
+        "avg_cs_per_min": 6.077,
+        "avg_damage_per_min": 1089.406
+      }
+    },
+    "improvement_trends": {
+      "win_rate_change": 0.30000000000000004,
+      "kda_change": 1.7899999999999996,
+      "cs_change": -0.2992382544633463,
+      "damage_change": -1.18225058200062
+    }
+  },
+  "coaching_feedback": {
+    "tactical_insights": {
+      "phase_distribution": {
+        "early": 27.848101265822784,
+        "mid": 55.69620253164557,
+        "late": 16.455696202531644
+      },
+      "zone_distribution": {
+        "lane": 35.44303797468354,
+        "ally_jungle": 26.582278481012654,
+        "enemy_jungle": 17.72151898734177,
+        "neutral": 10.126582278481013,
+        "river": 10.126582278481013
+      },
+      "objective_deaths": {
+        "baron": 2,
+        "dragon": 5
+      },
+      "total_deaths": 79,
+      "tactical_recommendations": [
+        "Objective deaths: 8.9% - practice positioning during Baron/Dragon fights"
+      ]
+    },
+    "strategic_insights": {
+      "death_timing_clusters": {
+        "5": 9,
+        "15": 19,
+        "20": 17,
+        "25": 8,
+        "30": 10,
+        "35": 3,
+        "10": 12,
+        "0": 1
+      },
+      "high_risk_deaths": 5,
+      "risk_percentage": 6.329113924050633,
+      "strategic_recommendations": [
+        "Death spike at 15 minutes - focus on safer macro decisions during this window",
+        "High-risk deaths: 6.3% - avoid contested objectives without proper vision control"
+      ]
+    },
+    "timing_insights": {
+      "average_death_time": 19.693705907172998,
+      "death_time_variance": 8.183846418625969,
+      "most_dangerous_window": "15-20 minutes",
+      "deaths_in_window": 19,
+      "timing_recommendations": [
+        "Death cluster at 15-20 min - be extra cautious during this timing"
+      ]
+    },
+    "positioning_insights": {
+      "position_consistency": "low",
+      "position_variance": 21851634.08972921,
+      "danger_zones": [
+        "lane",
+        "ally_jungle",
+        "enemy_jungle",
+        "neutral",
+        "river"
+      ],
+      "positioning_recommendations": [
+        "Deaths spread across map - work on consistent positioning habits",
+        "High death rate in lane - practice safer positioning in this area",
+        "High death rate in ally_jungle - practice safer positioning in this area",
+        "High death rate in enemy_jungle - practice safer positioning in this area"
+      ]
+    },
+    "improvement_areas": []
+  },
+  "timestamp": "2025-10-01T14:28:17.784712",
+  "date": "2025-10-01"
+}

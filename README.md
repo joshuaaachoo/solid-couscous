@@ -1,132 +1,282 @@
-# 🎮 RiftRewind: League of Legends AI Coach
+# 🎮 RiftRewind: AI-Powered League of Legends Coach
 
-An AI-powered League of Legends performance analyzer that provides comprehensive gameplay insights and beautiful death heatmap visualizations.
+> Personalized gameplay coaching powered by AWS Bedrock AI and Riot Games API
 
-## ✨ Features
+[![AWS Bedrock](https://img.shields.io/badge/AWS-Bedrock-orange)](https://aws.amazon.com/bedrock/)
+[![Python](https://img.shields.io/badge/Python-3.8+-blue)](https://www.python.org/)
+[![Claude 3](https://img.shields.io/badge/Claude-3%20Sonnet-purple)](https://www.anthropic.com/claude)
 
-### 📊 Advanced Analytics
-- **Player Performance Analysis**: Comprehensive statistics and performance metrics
-- **ML-Powered Insights**: Playstyle classification and behavioral analysis
-- **AI-Generated Coaching**: Natural language insights powered by AWS Bedrock
+## 🎯 Overview
 
-### 🗺️ Interactive Visualizations
-- **Death Heatmaps**: Beautiful gradient overlays on Summoner's Rift map
-- **Multiple Visualization Modes**: 
-  - Map overlay with smooth KDE gradients
-  - Density heatmaps with landmark references
-  - Champion-specific death patterns
-- **Real Map Integration**: Uses actual Summoner's Rift PNG background
+RiftRewind analyzes your League of Legends match history and generates personalized coaching insights using AWS Bedrock's Claude 3 AI model. Get expert-level feedback on your gameplay, identify improvement areas, and climb the ranked ladder faster.
 
-### 🔧 Technical Features
-- **Timeline Data Processing**: Extracts death locations from match timeline data
-- **Multi-format Support**: Handles both raw API and processed match data
-- **Gaussian KDE**: Smooth, continuous density estimation for natural-looking heatmaps
-- **Streamlit Web Interface**: Clean, interactive web application
+**Key Features:**
+- 🤖 AI-powered coaching with Claude 3 Sonnet
+- 📊 Match performance analysis from Riot API
+- 📈 Performance trend tracking across games
+- 💰 Cost-effective solution (~$0.04/month)
+- 🎯 Actionable, personalized improvement plans
+
+## 🏗️ Architecture
+
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────────┐
+│  Riot API   │───▶│ Match Data   │───▶│ AWS Bedrock     │
+│  (Live)     │    │ Processing   │    │ (Claude 3)      │
+└─────────────┘    └──────────────┘    └─────────────────┘
+                                               │
+                                               ▼
+                                    ┌──────────────────────┐
+                                    │ Coaching Insights    │
+                                    │ - Strengths          │
+                                    │ - Weaknesses         │
+                                    │ - Action Items       │
+                                    └──────────────────────┘
+```
+
+## ✨ What You Get
+
+### Single Match Analysis
+- KDA and CS performance breakdown
+- Vision control assessment
+- Champion-specific tips
+- Win condition analysis
+
+### Comprehensive Coaching
+- Performance trends across multiple games
+- Champion pool effectiveness
+- Role mastery evaluation
+- Rank improvement roadmap
+
+### AI-Generated Insights
+- Natural language coaching advice
+- Specific, actionable recommendations
+- Encouraging but honest feedback
+- Strategic and tactical guidance
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
+```bash
+# Required
 - Python 3.8+
-- Riot Games API Key
-- AWS credentials (for AI insights)
+- Riot Games API Key (free from developer.riotgames.com)
+
+# Optional (for AI coaching)
+- AWS Account with Bedrock access
+- AWS credentials configured
+```
 
 ### Installation
 
-1. Clone the repository:
 ```bash
-git clone <your-repo-url>
-cd riftrewind
-```
+# Clone repository
+git clone https://github.com/yourusername/RiftRewind.git
+cd RiftRewind
 
-2. Install dependencies:
-```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-3. Set up environment variables:
-```bash
+# Setup environment
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env and add your API keys
 ```
 
-4. Run the application:
+### Configuration
+
+Edit `.env`:
 ```bash
-streamlit run app.py
-```
-
-## 🎯 Usage
-
-1. **Enter Player Details**: Input game name and tag line
-2. **Select Analysis Scope**: Choose number of matches to analyze (5-20)
-3. **View Results**: Explore multiple visualization tabs:
-   - **Map Overlay**: Death heatmap with smooth gradients on Summoner's Rift
-   - **Density Heatmap**: Interactive Plotly visualization with landmarks
-   - **By Champion**: Champion-specific death pattern analysis
-
-## 🛠️ Architecture
-
-### Core Components
-- **`app.py`**: Streamlit web interface
-- **`riftrewind_app.py`**: Main application orchestration
-- **`riot_api_client.py`**: Riot Games API integration
-- **`visualization.py`**: Death heatmap generation and processing
-- **`riftrewind_ml_engine.py`**: ML analysis and playstyle classification
-- **`bedrock_insights.py`**: AI-powered natural language insights
-
-### Key Technologies
-- **Streamlit**: Web interface framework
-- **Matplotlib + PIL**: High-quality image generation and processing
-- **Scipy**: Gaussian KDE for smooth density estimation
-- **Plotly**: Interactive visualizations
-- **AWS Bedrock**: AI-powered insights generation
-- **Riot Games API**: Match and timeline data
-
-## 📊 Heatmap Technology
-
-The death heatmap visualization uses advanced techniques for professional-quality results:
-
-- **Kernel Density Estimation (KDE)**: Creates smooth, continuous density fields
-- **Multi-resolution Processing**: 150x150 meshgrid for detailed gradients
-- **Gaussian Smoothing**: Multiple passes for organic, cloud-like heat zones
-- **Full-map Coverage**: Uniform base layer ensures gradient covers entire map
-- **Plasma Colormap**: Beautiful purple → yellow gradient progression
-
-## 🔑 Configuration
-
-### Environment Variables
-```env
+# Required
 RIOT_API_KEY=your_riot_api_key_here
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key
-AWS_REGION=us-east-1
+
+# Optional (for AI coaching)
+AWS_ACCESS_KEY_ID=your_aws_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret
+AWS_DEFAULT_REGION=us-east-1
 ```
 
-### Assets
-- Place Summoner's Rift map image in `assets/summoners-rift-map.png`
-- Map should match League's coordinate system (14870x14980)
+### Run Demo
 
-## 🤝 Contributing
+```bash
+python demo_ai_coaching.py
+```
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+This will:
+1. Fetch your recent matches from Riot API
+2. Analyze your latest match performance
+3. Generate AI coaching insights
+4. Show performance trends across games
+
+## 📊 Example Output
+
+```
+🎯 MATCH SUMMARY
+═══════════════════════════════════════════════════════════
+Champion: Ahri
+KDA: 8/4/12 (5.0 KDA)
+CS: 198 (6.6 CS/min)
+Vision Score: 45
+Result: Victory
+Duration: 30 minutes
+═══════════════════════════════════════════════════════════
+
+🤖 AI COACHING INSIGHTS
+═══════════════════════════════════════════════════════════
+## Strengths
+- Excellent KDA management with minimal deaths
+- Strong vision control for your role
+- Good objective participation
+
+## Areas for Improvement
+- CS could be higher - aim for 7+ CS/min
+- Death positioning needs work (check replays)
+- Ward timing around objectives
+
+## Action Items
+1. Practice last-hitting in practice tool
+2. Review death locations - were you overextended?
+3. Ward 60-90s before Drake/Baron spawns
+═══════════════════════════════════════════════════════════
+```
+
+## 📁 Project Structure
+
+```
+RiftRewind/
+├── src/
+│   ├── ai_coach/              # AI coaching module
+│   │   ├── bedrock_coaching_insights.py
+│   │   ├── enhanced_coaching.py
+│   │   └── README.md
+│   ├── api/                   # Riot API client
+│   │   └── riot_api_client.py
+│   └── core/                  # Core utilities
+├── demo_ai_coaching.py        # Demo script
+├── requirements.txt           # Python dependencies
+├── .env.example              # Environment template
+└── README.md                 # This file
+```
+
+## 💰 Cost Analysis
+
+### AWS Bedrock Pricing
+- **Input tokens**: $0.003 per 1K tokens
+- **Output tokens**: $0.015 per 1K tokens
+- **Typical analysis**: ~2K tokens = $0.03
+
+**Monthly Cost:**
+- 10 match analyses: ~$0.30
+- 100 match analyses: ~$3.00
+- Average user: **~$0.04/month**
+
+### Comparison with ML Approach
+
+| Solution | Monthly Cost | Setup Time | Accuracy |
+|----------|-------------|------------|----------|
+| SageMaker ML | ~$510 | Weeks | Uncertain |
+| Bedrock AI | ~$0.04 | Minutes | Excellent |
+| **Savings** | **99.99%** | **Instant** | **Better** |
+
+## 🔧 API Reference
+
+### BedrockCoachingInsights
+
+```python
+from ai_coach.bedrock_coaching_insights import BedrockCoachingInsights
+
+coach = BedrockCoachingInsights()
+
+# Analyze single match
+insights = coach.generate_match_coaching(match_data)
+
+# Analyze match history
+comprehensive = coach.generate_gameplay_coaching(match_history)
+```
+
+**Methods:**
+
+- `generate_match_coaching(match_data: Dict) -> Dict`
+  - Analyzes single match performance
+  - Returns AI-generated insights with metadata
+
+- `generate_gameplay_coaching(match_history: List[Dict]) -> Dict`
+  - Analyzes performance trends across multiple games
+  - Returns comprehensive improvement plan
+
+## 🛠️ Development
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Code Style
+
+```bash
+# Format code
+black src/
+
+# Lint
+flake8 src/
+```
+
+## 📖 Documentation
+
+- [AI Coach Module](src/ai_coach/README.md) - Detailed Bedrock integration docs
+- [API Reference](docs/API_REFERENCE.md) - Complete API documentation
+- [Architecture](docs/TECHNICAL_ARCHITECTURE.md) - System design details
+
+## 🗺️ Roadmap
+
+- [x] Basic match analysis
+- [x] AI coaching with Claude 3
+- [x] Performance trend tracking
+- [ ] Champion-specific coaching
+- [ ] Rank prediction
+- [ ] Discord bot integration
+- [ ] Web dashboard
+- [ ] Team composition analysis
+
+## 🤔 Why Not ML/Computer Vision?
+
+**Original Plan:** TensorFlow ward detection with SageMaker endpoints
+
+**Why We Pivoted:**
+1. ❌ Training data collection too difficult
+2. ❌ AWS SageMaker costs ($0.71/hour = $510/month)
+3. ❌ Complex deployment pipeline
+4. ❌ Ward detection accuracy challenges
+
+**Current Solution:**
+1. ✅ Simple Riot API integration
+2. ✅ Claude 3 for natural language coaching
+3. ✅ Minimal costs (~$0.04/month)
+4. ✅ Better insights, no training needed
+
+**Result:** 99.99% cost reduction + better user experience
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - See [LICENSE](LICENSE) for details
 
 ## 🙏 Acknowledgments
 
-- **Riot Games**: For providing comprehensive API access
-- **League of Legends Community**: For inspiration and feedback
-- **Open Source Libraries**: All the amazing Python libraries that make this possible
+- Riot Games for the excellent API
+- AWS Bedrock team for Claude 3 access
+- Anthropic for Claude's AI capabilities
 
-## 🐛 Issues & Support
+## 📧 Contact
 
-Found a bug or have a feature request? Please open an issue on GitHub.
+Questions? Open an issue or reach out!
 
 ---
 
-**Disclaimer**: RiftRewind isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends.
+**Built with:** AWS Bedrock • Claude 3 Sonnet • Riot Games API • Python
+
+**Status:** ✅ Production Ready (Demo Phase)

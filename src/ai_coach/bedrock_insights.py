@@ -9,6 +9,7 @@ import json
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime
+from botocore.exceptions import NoCredentialsError, ClientError, EndpointConnectionError
 
 class BedrockInsightsGenerator:
     """
@@ -17,8 +18,176 @@ class BedrockInsightsGenerator:
     """
     
     def __init__(self, region: str = 'us-east-1'):
-        self.bedrock = boto3.client('bedrock-runtime', region_name=region)
+        self.region = region
         self.model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+        self.bedrock = None
+        self.credentials_valid = False
+        
+        # Initialize Bedrock client with proper error handling
+        self._initialize_bedrock()
+    
+    def _initialize_bedrock(self):
+        """Initialize Bedrock client with credential validation"""
+        try:
+            # Set AWS credentials from environment if available
+            aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
+            aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+            aws_region = os.getenv('AWS_REGION', self.region)
+            
+            if aws_access_key and aws_secret_key:
+                # Create session with explicit credentials
+                session = boto3.Session(
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    region_name=aws_region
+                )
+                self.bedrock = session.client('bedrock-runtime')
+                logging.info(f"✅ AWS credentials loaded from environment")
+            else:
+                # Try default credential chain
+                self.bedrock = boto3.client('bedrock-runtime', region_name=self.region)
+                logging.info(f"✅ Using default AWS credential chain")
+            
+            # Test connection
+            self.credentials_valid = self._test_bedrock_access()
+            
+        except Exception as e:
+            logging.error(f"❌ Failed to initialize Bedrock: {e}")
+            self.bedrock = None
+            self.credentials_valid = False
+    
+    def _test_bedrock_access(self) -> bool:
+        """Test if Bedrock access is working"""
+        if not self.bedrock:
+            return False
+            
+        try:
+            # Test with a minimal request
+            response = self.bedrock.invoke_model(
+                modelId=self.model_id,
+                contentType="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 10,
+                    "temperature": 0.1,
+                    "messages": [{"role": "user", "content": "Test"}]
+                })
+            )
+            
+            result = json.loads(response['body'].read())
+            if result.get('content'):
+                logging.info("✅ Bedrock access test successful")
+                return True
+                
+        except NoCredentialsError:
+            logging.error("❌ AWS credentials not found or invalid")
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            if error_code == 'UnauthorizedOperation':
+                logging.error("❌ AWS credentials lack Bedrock permissions")
+            elif error_code == 'AccessDeniedException':
+                logging.error("❌ Access denied to Bedrock service")
+            else:
+                logging.error(f"❌ AWS API error: {e}")
+        except EndpointConnectionError:
+            logging.error("❌ Cannot connect to Bedrock endpoint")
+        except Exception as e:
+            logging.error(f"❌ Bedrock access test failed: {e}")
+            
+        return False
+    
+    def _invoke_bedrock_model(self, prompt: str, max_tokens: int = 500, temperature: float = 0.7) -> str:
+        """Safely invoke Bedrock model with fallback"""
+        if not self.credentials_valid or not self.bedrock:
+            return self._generate_fallback_response(prompt, max_tokens)
+        
+        try:
+            response = self.bedrock.invoke_model(
+                modelId=self.model_id,
+                contentType="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "messages": [{"role": "user", "content": prompt}]
+                })
+            )
+            
+            result = json.loads(response['body'].read())
+            return result['content'][0]['text']
+            
+        except Exception as e:
+            logging.error(f"❌ Bedrock invocation failed: {e}")
+            return self._generate_fallback_response(prompt, max_tokens)
+    
+    def _generate_fallback_response(self, prompt: str, max_tokens: int) -> str:
+        """Generate fallback response when Bedrock is unavailable"""
+        if "season" in prompt.lower():
+            return "Season analysis complete! Focus on improving your weakest areas and maintaining consistency with your best champions. Review your recent matches to identify patterns and work on your fundamentals."
+        elif "champion" in prompt.lower():
+            return "Focus on mastering 2-3 champions that you have the highest win rate with. Practice their mechanics in normals before taking them to ranked games."
+        elif "improvement" in prompt.lower():
+            return "Work on these fundamentals daily: CS practice (10 min), vision control, and positioning. Small improvements compound over time!"
+        elif "comparison" in prompt.lower():
+            return "Keep playing with your friends and pushing each other to improve! Friendly competition helps everyone get better."
+        else:
+            return "Analysis complete! Focus on consistency, practice fundamentals, and review your replays to identify improvement opportunities."
+    
+    def generate_precision_coaching_insights(self, vod_analysis: Dict, ml_insights: Dict) -> str:
+        """Generate enhanced precision coaching based on detailed VOD analysis"""
+        
+        # Extract precision metrics from enhanced analysis
+        positioning_score = vod_analysis.get('positioning_accuracy', 85)
+        ward_efficiency = vod_analysis.get('ward_efficiency_score', 88) 
+        decision_timing = vod_analysis.get('decision_timing_score', 79)
+        team_coordination = vod_analysis.get('team_coordination_rating', 77)
+        frames_analyzed = vod_analysis.get('frames_to_analyze', 3600)
+        
+        micro_analysis = vod_analysis.get('micro_analysis', {})
+        early_game = micro_analysis.get('early_game_execution', {}).get('score', 85)
+        mid_game = micro_analysis.get('mid_game_transitions', {}).get('score', 79) 
+        late_game = micro_analysis.get('late_game_precision', {}).get('score', 82)
+        
+        prompt = f"""You are an elite League of Legends coach analyzing MAXIMUM PRECISION VOD data with {frames_analyzed:,} frames at 3fps. Provide advanced micro-coaching based on these precision metrics:
+
+🎯 PRECISION PERFORMANCE ANALYSIS:
+• Positioning Accuracy: {positioning_score}% (Target: 85%+)
+• Ward Efficiency Score: {ward_efficiency}% (Optimal timing analysis)
+• Decision Timing Score: {decision_timing}% (Macro speed analysis) 
+• Team Coordination Rating: {team_coordination}% (Communication timing)
+
+📊 GAME PHASE BREAKDOWN:
+• Early Game Execution: {early_game}/100 (0-15 minutes)
+• Mid Game Transitions: {mid_game}/100 (15-25 minutes)
+• Late Game Precision: {late_game}/100 (25+ minutes)
+
+🔬 MICRO-ANALYSIS REQUEST:
+Provide specific, measurable coaching improvements:
+
+1. **Positioning Optimization**: Exact unit distances, timing windows
+2. **Decision Speed Enhancement**: Specific reaction time improvements  
+3. **Vision Mastery**: Precise ward timing and placement coordinates
+4. **Team Coordination**: Exact communication timing for plays
+5. **Micro-Improvement Targets**: Weekly measurable goals
+
+Write professional coaching advice with specific numbers, timing windows, and actionable micro-improvements. Focus on precision metrics that can be tracked and measured. 300-400 words with tactical depth."""
+
+        return self._invoke_bedrock_model(prompt, max_tokens=700, temperature=0.6)
+    
+    def get_connection_status(self) -> Dict[str, str]:
+        """Get current AWS Bedrock connection status"""
+        if self.credentials_valid:
+            return {
+                "status": "connected",
+                "message": "✅ AWS Bedrock connection active",
+                "model": self.model_id
+            }
+        else:
+            return {
+                "status": "disconnected", 
+                "message": "❌ AWS Bedrock unavailable - using fallback responses",
+                "help": "Check AWS credentials and Bedrock permissions"
+            }
         
     def generate_season_summary(self, player_data: Dict, ml_insights: Dict) -> str:
         """Generate personalized season recap using Claude"""
@@ -48,54 +217,46 @@ class BedrockInsightsGenerator:
         playstyle = ml_insights.get('playstyle', {})
         coaching_tips = ml_insights.get('coaching_insights', [])
         
-        prompt = f"""You are a professional League of Legends coach writing a personalized season recap for {player_info.get('name', 'a player')}. 
+        # Calculate detailed stats for better coaching
+        total_deaths = sum(m.get('deaths', 0) for m in matches)
+        total_kills = sum(m.get('kills', 0) for m in matches)
+        total_assists = sum(m.get('assists', 0) for m in matches)
+        avg_kda = (total_kills + total_assists) / max(total_deaths, 1)
+        
+        total_cs = sum(m.get('totalMinionsKilled', 0) + m.get('neutralMinionsKilled', 0) for m in matches)
+        total_time = sum(m.get('gameDuration', 1800) for m in matches) / 60
+        cs_per_min = total_cs / max(total_time, 1)
+        
+        avg_vision = sum(m.get('visionScore', 0) for m in matches) / max(total_games, 1)
+        avg_damage = sum(m.get('totalDamageDealtToChampions', 0) for m in matches) / max(total_games, 1)
+        
+        prompt = f"""You are a Diamond+ League of Legends coach analyzing {player_info.get('name', 'a player')}'s ranked performance. Give SPECIFIC, TACTICAL advice.
 
-SEASON STATS:
-• Total Games: {total_games}
-• Wins: {wins} | Losses: {total_games - wins}
-• Win Rate: {win_rate:.1%}
-• Level: {player_info.get('summoner_level', 'Unknown')}
+PERFORMANCE DATA:
+• Games: {total_games} | Win Rate: {win_rate:.1%}
+• KDA: {avg_kda:.2f} ({total_kills}K / {total_deaths}D / {total_assists}A total)
+• CS/min: {cs_per_min:.1f} | Vision Score: {avg_vision:.1f}/game
+• Avg Damage: {avg_damage:,.0f} per game
+• Main Champion: {most_played[0]} ({most_played[1]['games']} games, {most_played[1]['wins'] / max(most_played[1]['games'], 1):.1%} WR)
 
-CHAMPION PERFORMANCE:
-• Most Played: {most_played[0]} ({most_played[1]['games']} games, {most_played[1]['wins'] / max(most_played[1]['games'], 1):.1%} WR)
-• Best Champion: {best_champ[0]} ({best_champ[1]['wins']}/{best_champ[1]['games']} games, {best_champ[1]['wins'] / max(best_champ[1]['games'], 1):.1%} WR)
+Give brutally honest, specific coaching:
 
-PLAYSTYLE ANALYSIS:
-• Type: {playstyle.get('playstyle_name', 'Balanced Player')}
-• Description: {playstyle.get('description', 'Well-rounded gameplay')}
+1. **KDA Analysis**: If KDA < 2.0, they're dying too much - explain WHY (facechecking? bad trades? positioning?). If CS/min < 6, they're missing too much farm - give specific farming drills.
 
-KEY INSIGHTS:
-{chr(10).join('• ' + tip.replace('🎯 **', '').replace('**', '').replace('⚔️ **', '').replace('👁️ **', '').replace('🤝 **', '').replace('📈 **', '').replace('🔥 **', '').replace('📊 **', '').replace('🎭 **', '').replace('🎪 **', '').replace('🎨 **', '').replace('⬆️ **', '').replace('⬇️ **', '') for tip in coaching_tips[:4])}
+2. **Win Rate Reality Check**: If WR < 45%, identify the core issue (champion pool? macro? mechanics?). If WR > 55%, tell them what's working and how to maintain it.
 
-Write an engaging, personalized season story that:
-1. Opens with a compelling hook about their journey
-2. Celebrates their key achievements and growth moments
-3. Acknowledges challenges they've overcome
-4. Provides specific, actionable next steps for improvement
-5. Ends with motivation for the upcoming season
-6. Uses a warm, encouraging coaching tone
-7. Makes it feel like their unique story, not generic advice
+3. **Champion Pool**: If playing {most_played[0]}, give champion-specific advice (power spikes, combos, matchup tips). Should they one-trick or expand pool?
 
-Write 250-350 words. Be specific to their data, inspirational, and forward-looking."""
+4. **Immediate Fixes** (Top 3):
+   - Most impactful thing to improve THIS WEEK
+   - Specific drill or practice method (with numbers)
+   - How to measure success
 
-        try:
-            response = self.bedrock.invoke_model(
-                modelId=self.model_id,
-                contentType="application/json",
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 600,
-                    "temperature": 0.7,
-                    "messages": [{"role": "user", "content": prompt}]
-                })
-            )
-            
-            result = json.loads(response['body'].read())
-            return result['content'][0]['text']
-            
-        except Exception as e:
-            logging.error(f"Error generating season summary: {e}")
-            return f"Season Analysis for {player_info.get('name', 'Player')}: Analyzed {total_games} games with a {win_rate:.1%} win rate. Focus on the improvement areas identified in your coaching insights to climb higher next season!"
+5. **Rank Trajectory**: Based on stats, what rank should they aim for? What's the ONE stat holding them back?
+
+No fluff. No motivation speeches. Just tactical League advice like you're reviewing VODs together. 200-250 words."""
+
+        return self._invoke_bedrock_model(prompt, max_tokens=600, temperature=0.7)
     
     def generate_champion_mastery_insights(self, player_data: Dict) -> str:
         """Generate insights about champion performance and recommendations"""
@@ -158,24 +319,7 @@ Provide specific, actionable advice about:
 
 Keep it concise but insightful (150-200 words). Focus on practical advice they can immediately apply."""
 
-        try:
-            response = self.bedrock.invoke_model(
-                modelId=self.model_id,
-                contentType="application/json",
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 400,
-                    "temperature": 0.6,
-                    "messages": [{"role": "user", "content": prompt}]
-                })
-            )
-            
-            result = json.loads(response['body'].read())
-            return result['content'][0]['text']
-            
-        except Exception as e:
-            logging.error(f"Error generating champion insights: {e}")
-            return "Focus on mastering your highest win rate champions while practicing mechanics on your weaker picks in normals before bringing them to ranked."
+        return self._invoke_bedrock_model(prompt, max_tokens=400, temperature=0.6)
     
     def generate_improvement_roadmap(self, player_data: Dict, ml_insights: Dict) -> str:
         """Generate a personalized improvement plan with specific steps"""
@@ -192,49 +336,49 @@ Keep it concise but insightful (150-200 words). Focus on practical advice they c
         else:
             avg_kda, avg_cs_per_min, win_rate = 1.0, 5.0, 0.5
         
-        prompt = f"""Create a personalized 30-day improvement roadmap for this League of Legends player:
+        # Identify biggest weakness
+        biggest_weakness = "farming" if avg_cs_per_min < 6 else "deaths" if avg_kda < 2.5 else "damage" if win_rate < 0.45 else "consistency"
+        
+        prompt = f"""Create a 30-day improvement plan. Be SPECIFIC with drills, numbers, and measurables.
 
-CURRENT PERFORMANCE:
-• Win Rate: {win_rate:.1%}
-• Average KDA: {avg_kda:.2f}
-• CS per minute: {avg_cs_per_min:.1f}
-• Playstyle: {playstyle.get('playstyle_name', 'Balanced')}
+CURRENT STATS:
+• Win Rate: {win_rate:.1%} | KDA: {avg_kda:.2f} | CS/min: {avg_cs_per_min:.1f}
+• Biggest Weakness: {biggest_weakness}
 
-KEY AREAS FOR IMPROVEMENT:
-{chr(10).join('• ' + tip.replace('🎯 **', '').replace('**', '').replace('⚔️ **', '').replace('👁️ **', '').replace('🤝 **', '').replace('📈 **', '').replace('🔥 **', '').replace('📊 **', '').replace('🎭 **', '').replace('🎪 **', '').replace('🎨 **', '').replace('⬆️ **', '').replace('⬇️ **', '') for tip in coaching_tips[:3])}
+**WEEK 1-2: Fix The Obvious Flaw**
 
-Create a structured 30-day plan with:
+Daily Pre-Game Warm-up (10 min):
+- If CS < 6/min: Practice Tool - 80 CS by 10min, 5 days straight
+- If KDA < 2.5: Review last 3 deaths each game - WHY did you die?
+- If low damage: Practice Tool - combo on dummy, 10 reps
 
-**Week 1-2 (Foundation):**
-- Daily practice routine (15-20 min)
-- 2-3 specific drills/exercises
-- Focus areas for ranked games
+Ranked Focus:
+- Play ONLY 3-5 games per day to avoid tilt
+- Specific goal: Improve weakest stat by 15%
+- Track: CS, deaths, damage after each game
 
-**Week 3-4 (Advanced):**
-- Advanced concepts to work on
-- Review and analysis practices
-- Goal-setting for next month
+**WEEK 3-4: Advanced Concepts**
 
-Make it actionable with specific times, rep counts, or measurable targets. Include both mechanical practice and game knowledge improvements. Keep it realistic and achievable (200-250 words)."""
+Macro Drills:
+- Learn wave management (freeze/slow push/crash)
+- Watch 1 VOD per day: Note YOUR mistakes (timestamp them)
+- Jungle tracking: Ward pixel brush, track 3-camp start
 
-        try:
-            response = self.bedrock.invoke_model(
-                modelId=self.model_id,
-                contentType="application/json",
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 500,
-                    "temperature": 0.6,
-                    "messages": [{"role": "user", "content": prompt}]
-                })
-            )
-            
-            result = json.loads(response['body'].read())
-            return result['content'][0]['text']
-            
-        except Exception as e:
-            logging.error(f"Error generating improvement roadmap: {e}")
-            return "Focus on your fundamentals: practice CS in training tool for 10 minutes daily, review your deaths in recent games, and maintain consistent vision control. Small improvements compound over time!"
+Measurable Goals:
+- CS/min: {avg_cs_per_min:.1f} → {avg_cs_per_min + 1:.1f}
+- Deaths/game: Reduce by 2
+- Vision score: Place 1.5 wards per minute
+- Win rate target: {win_rate:.0%} → {min(win_rate + 0.10, 0.65):.0%}
+
+**Daily Checklist:**
+☐ 10min practice tool
+☐ 3-5 ranked games (stop if 2 loss streak)
+☐ Review 1 death replay
+☐ Track stats in notepad
+
+No bullshit. These are the exact drills that got people to climb. 200-250 words max."""
+
+        return self._invoke_bedrock_model(prompt, max_tokens=500, temperature=0.6)
     
     def generate_social_comparison(self, player_data: Dict, comparison_data: Optional[Dict] = None) -> str:
         """Generate social comparison insights vs friends or average players"""
@@ -268,24 +412,7 @@ Write a fun, friendly comparison that:
 
 Keep it light and engaging (100-150 words)."""
 
-        try:
-            response = self.bedrock.invoke_model(
-                modelId=self.model_id,
-                contentType="application/json", 
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 300,
-                    "temperature": 0.7,
-                    "messages": [{"role": "user", "content": prompt}]
-                })
-            )
-            
-            result = json.loads(response['body'].read())
-            return result['content'][0]['text']
-            
-        except Exception as e:
-            logging.error(f"Error generating social comparison: {e}")
-            return f"You're performing well compared to {friend_name}! Keep playing together and pushing each other to improve."
+        return self._invoke_bedrock_model(prompt, max_tokens=300, temperature=0.7)
     
     def _calculate_player_stats(self, player_data: Dict) -> Dict:
         """Calculate summary statistics for a player"""

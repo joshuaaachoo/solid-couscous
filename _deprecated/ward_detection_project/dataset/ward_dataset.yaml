@@ -1,0 +1,8 @@
+names:
+- stealth_ward
+- control_ward
+- zombie_ward
+- ward_debris
+nc: 4
+train: ward_detection_project/dataset/images/train
+val: ward_detection_project/dataset/images/val

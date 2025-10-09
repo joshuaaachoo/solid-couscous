@@ -1,3 +1,4 @@
+# Core RiftRewind Dependencies
 streamlit>=1.28.0
 plotly>=5.15.0
 matplotlib>=3.7.0
@@ -10,3 +11,18 @@ aiohttp>=3.8.0
 asyncio-throttle>=1.0.0
 boto3>=1.28.0
 requests>=2.31.0
+seaborn>=0.12.0
+
+# Computer Vision & ML (Optional - for Pro VOD Analysis)
+opencv-python>=4.8.0
+torch>=2.0.0
+torchvision>=0.15.0
+easyocr>=1.7.0
+scikit-learn>=1.3.0
+
+# Video Processing (Optional - for Pro VOD Analysis)  
+yt-dlp>=2023.7.6
+
+# Development Tools
+pytest>=7.4.0
+black>=23.0.0
