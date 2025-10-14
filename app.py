@@ -21,7 +21,7 @@ load_dotenv()
 
 st.set_page_config(
     page_title="RiftRewind AI Coach",
-    page_icon="🎮",
+    page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="collapsed"  # Hide sidebar by default
 )
@@ -401,7 +401,7 @@ st.markdown("""
         <div class="main-title">REWIND</div>
         <div class="subtitle">Elite AI Coaching • Powered by AWS Bedrock Claude 3 Sonnet</div>
         <p style="color: rgba(255, 255, 255, 0.8); font-weight: 600; font-size: 1rem; margin-top: 1rem;">
-            🎯 Ranked Solo/Duo Analysis • 📊 Advanced ML Insights • 🔗 Player Network Discovery
+            Ranked Solo/Duo Analysis • Advanced ML Insights • Player Network Discovery
         </p>
     </div>
     <div class="scroll-indicator">↓</div>
@@ -472,7 +472,7 @@ st.markdown('<div style="max-width: 800px; margin: 0 auto; padding: 1rem 2rem;">
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("### ⚙ PLAYER LOOKUP")
+    st.markdown("### PLAYER LOOKUP")
     game_name = st.text_input("Summoner Name", value="radpoles", placeholder="Enter summoner name")
     tag_line = st.text_input("Tag Line", value="chill", placeholder="Enter tag line")
     region = st.selectbox("Region", ["americas", "europe", "asia"], index=0)
@@ -481,7 +481,7 @@ with col1:
     analyze_button = st.button("ANALYZE MY GAMES", type="primary", use_container_width=True)
 
 with col2:
-    st.markdown("### 🔗 SEVEN DEGREES")
+    st.markdown("### SEVEN DEGREES")
     target_game_name = st.text_input("Target Player Name", placeholder="Enter target name")
     target_tag_line = st.text_input("Target Tag", placeholder="Enter target tag")
     matches_to_check = st.slider("Matches Per Player", min_value=1, max_value=10, value=3, step=1,
@@ -835,7 +835,7 @@ async def analyze_player(game_name: str, tag_line: str, region: str):
             st.info(f"Found {len(match_ids)} recent ranked matches")
         
         # Get match details
-        with st.spinner("📈 Analyzing match data..."):
+        with st.spinner("Analyzing match data..."):
             all_matches = []
             timelines = []
             for match_id in match_ids:
@@ -1319,7 +1319,7 @@ if separation_button:
             
             # Fun stats
             st.markdown("---")
-            st.markdown("### 📊 Connection Statistics")
+            st.markdown("### Connection Statistics")
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 st.metric("Degrees of Separation", degree)
@@ -1337,27 +1337,27 @@ st.markdown("</div>", unsafe_allow_html=True)  # Close content-section
 st.markdown("---")
 st.markdown("""
 <div class="footer">
-    <h2 style="margin-bottom: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800;">⚡ Powered by Elite Technology</h2>
+    <h2 style="margin-bottom: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800;">Powered by Elite Technology</h2>
     <div style="display: flex; justify-content: center; gap: 2rem; margin: 2rem 0; flex-wrap: wrap;">
         <div style="text-align: center;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🤖</div>
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">AI</div>
             <div style="font-weight: 600; color: #667eea;">AWS Bedrock</div>
             <div style="font-size: 0.9rem; color: #888;">Claude 3 Sonnet</div>
         </div>
         <div style="text-align: center;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎮</div>
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">API</div>
             <div style="font-weight: 600; color: #667eea;">Riot Games API</div>
             <div style="font-size: 0.9rem; color: #888;">Real-time Data</div>
         </div>
         <div style="text-align: center;">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🐍</div>
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">ML</div>
             <div style="font-weight: 600; color: #667eea;">Python ML</div>
             <div style="font-size: 0.9rem; color: #888;">Advanced Analytics</div>
         </div>
     </div>
     <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid rgba(102, 126, 234, 0.2);">
         <p style="color: #667eea; font-weight: 600; margin: 0.5rem 0; font-size: 1.1rem;">
-            💰 Efficient & Affordable
+            Efficient & Affordable
         </p>
         <p style="color: #888; margin-top: 0.5rem; font-size: 0.95rem;">
             ~$0.04/month typical usage
