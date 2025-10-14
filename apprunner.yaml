@@ -1,0 +1,19 @@
+# AWS App Runner configuration file
+version: 1.0
+runtime: python3.11
+build:
+  commands:
+    build:
+      - pip install -r requirements.txt
+run:
+  runtime-version: 3.11
+  command: streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+  network:
+    port: 8501
+    env:
+      - name: AWS_REGION
+        value: us-east-1
+      - name: MATCHES_TABLE
+        value: riftrewind-matches
+      - name: SEARCHES_TABLE
+        value: riftrewind-searches
