@@ -528,9 +528,9 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
         if source_account.puuid == target_account.puuid:
             return {'error': 'Source and target are the same player!'}
         
-        # Bidirectional search setup - search from both ends
-        source_stack = [(source_account.puuid, [source_account.puuid], [], 0)]  # (puuid, path, matches, depth)
-        target_stack = [(target_account.puuid, [target_account.puuid], [], 0)]
+        # Bidirectional search setup - search from both ends using QUEUES for BFS
+        source_queue = [(source_account.puuid, [source_account.puuid], [], 0)]  # (puuid, path, matches, depth)
+        target_queue = [(target_account.puuid, [target_account.puuid], [], 0)]
         
         source_visited = {source_account.puuid: ([], [])}  # puuid -> (path, matches)
         target_visited = {target_account.puuid: ([], [])}
@@ -573,10 +573,10 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
         max_players_to_check = 300
         
         # Alternate between searching from source and target
-        while (source_stack or target_stack) and players_checked < max_players_to_check:
+        while (source_queue or target_queue) and players_checked < max_players_to_check:
             # Try from source side first
-            if source_stack:
-                current_puuid, path, connection_matches, depth = source_stack.pop()
+            if source_queue:
+                current_puuid, path, connection_matches, depth = source_queue.pop(0)  # FIFO for BFS
                 
                 # Check if we've exceeded max depth
                 if depth >= max_depth:
@@ -680,11 +680,11 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                                 'game_duration': match_details.get('info', {}).get('gameDuration', 0)
                             }]
                             source_visited[neighbor_puuid] = (new_path, new_matches)
-                            source_stack.append((neighbor_puuid, new_path, new_matches, depth + 1))
+                            source_queue.append((neighbor_puuid, new_path, new_matches, depth + 1))
             
             # Try from target side
-            if target_stack:
-                current_puuid, path, connection_matches, depth = target_stack.pop()
+            if target_queue:
+                current_puuid, path, connection_matches, depth = target_queue.pop(0)  # FIFO for BFS
                 
                 # Check if we've exceeded max depth
                 if depth >= max_depth:
@@ -788,7 +788,7 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                                 'game_duration': match_details.get('info', {}).get('gameDuration', 0)
                             }]
                             target_visited[neighbor_puuid] = (new_path, new_matches)
-                            target_stack.append((neighbor_puuid, new_path, new_matches, depth + 1))
+                            target_queue.append((neighbor_puuid, new_path, new_matches, depth + 1))
         
         elapsed = time.time() - start_time
         total_visited = len(source_visited) + len(target_visited)
