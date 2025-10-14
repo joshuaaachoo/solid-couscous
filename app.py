@@ -543,7 +543,8 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
         # Track the search tree for visualization
         search_tree = {
             'nodes': [],
-            'edges': []
+            'edges': [],
+            'node_ids': set()  # Fast O(1) lookup for node existence
         }
         search_tree['nodes'].append({
             'id': source_account.puuid,
@@ -551,20 +552,25 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
             'depth': 0,
             'type': 'source'
         })
+        search_tree['node_ids'].add(source_account.puuid)
         search_tree['nodes'].append({
             'id': target_account.puuid,
             'name': f"{target_name}#{target_tag}",
             'depth': 0,
             'type': 'target'
         })
+        search_tree['node_ids'].add(target_account.puuid)
         
         # Initial callback to show both starting players
         if progress_callback:
-            progress_callback(0, 0, 2, tree_update=search_tree)
+            try:
+                progress_callback(0, 0, 2, tree_update=search_tree)
+            except:
+                pass  # Ignore if browser disconnected
         
         players_checked = 0
         matches_checked = 0
-        max_players_to_check = 30
+        max_players_to_check = 300
         
         # Alternate between searching from source and target
         while (source_stack or target_stack) and players_checked < max_players_to_check:
@@ -608,8 +614,8 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                             riot_tag = participant.get('riotIdTagline', '')
                             puuid_to_name[neighbor_puuid] = f"{riot_id}#{riot_tag}" if riot_tag else riot_id
                         
-                        # Add to search tree
-                        if neighbor_puuid not in [n['id'] for n in search_tree['nodes']]:
+                        # Add to search tree (use fast set lookup)
+                        if neighbor_puuid not in search_tree['node_ids']:
                             node_type = 'target' if neighbor_puuid == target_account.puuid else 'intermediate'
                             search_tree['nodes'].append({
                                 'id': neighbor_puuid,
@@ -617,23 +623,28 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                                 'depth': depth + 1,
                                 'type': node_type
                             })
+                            search_tree['node_ids'].add(neighbor_puuid)
                             search_tree['edges'].append({
                                 'from': current_puuid,
                                 'to': neighbor_puuid,
                                 'match_id': match_id
                             })
                             
-                            # Update visualization with new node
-                            if progress_callback:
-                                total_visited = len(source_visited) + len(target_visited)
-                                progress_callback(players_checked, matches_checked, total_visited, tree_update=search_tree)
+                            # Update visualization less frequently (every 5 nodes instead of every node)
+                            if progress_callback and len(search_tree['nodes']) % 5 == 0:
+                                try:
+                                    total_visited = len(source_visited) + len(target_visited)
+                                    progress_callback(players_checked, matches_checked, total_visited, tree_update=search_tree)
+                                except:
+                                    pass  # Ignore if browser disconnected
                         
                         # Check if target side has visited this player - CONNECTION FOUND!
                         if neighbor_puuid in target_visited:
                             target_path, target_matches = target_visited[neighbor_puuid]
                             
                             # Combine paths: source -> neighbor <- target
-                            final_path = path + [neighbor_puuid] + target_path[::-1]
+                            # neighbor_puuid is already at the end of 'path', so don't add it again
+                            final_path = path + target_path[::-1]
                             
                             match_info = {
                                 'match_id': match_id,
@@ -659,7 +670,7 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                             }
                         
                         # Add to source stack if not visited
-                        if neighbor_puuid not in source_visited and len(source_visited) < 50:
+                        if neighbor_puuid not in source_visited and len(source_visited) < 200:
                             new_path = path + [neighbor_puuid]
                             new_matches = connection_matches + [{
                                 'match_id': match_id,
@@ -711,8 +722,8 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                             riot_tag = participant.get('riotIdTagline', '')
                             puuid_to_name[neighbor_puuid] = f"{riot_id}#{riot_tag}" if riot_tag else riot_id
                         
-                        # Add to search tree
-                        if neighbor_puuid not in [n['id'] for n in search_tree['nodes']]:
+                        # Add to search tree (use fast set lookup)
+                        if neighbor_puuid not in search_tree['node_ids']:
                             node_type = 'source' if neighbor_puuid == source_account.puuid else 'intermediate'
                             search_tree['nodes'].append({
                                 'id': neighbor_puuid,
@@ -720,23 +731,28 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                                 'depth': depth + 1,
                                 'type': node_type
                             })
+                            search_tree['node_ids'].add(neighbor_puuid)
                             search_tree['edges'].append({
                                 'from': current_puuid,
                                 'to': neighbor_puuid,
                                 'match_id': match_id
                             })
                             
-                            # Update visualization with new node
-                            if progress_callback:
-                                total_visited = len(source_visited) + len(target_visited)
-                                progress_callback(players_checked, matches_checked, total_visited, tree_update=search_tree)
+                            # Update visualization less frequently (every 5 nodes instead of every node)
+                            if progress_callback and len(search_tree['nodes']) % 5 == 0:
+                                try:
+                                    total_visited = len(source_visited) + len(target_visited)
+                                    progress_callback(players_checked, matches_checked, total_visited, tree_update=search_tree)
+                                except:
+                                    pass  # Ignore if browser disconnected
                         
                         # Check if source side has visited this player - CONNECTION FOUND!
                         if neighbor_puuid in source_visited:
                             source_path, source_matches = source_visited[neighbor_puuid]
                             
                             # Combine paths: source -> neighbor <- target
-                            final_path = source_path + [neighbor_puuid] + path[::-1]
+                            # neighbor_puuid is already at the end of source_path, so don't add it again
+                            final_path = source_path + path[::-1]
                             
                             match_info = {
                                 'match_id': match_id,
@@ -762,7 +778,7 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                             }
                         
                         # Add to target stack if not visited
-                        if neighbor_puuid not in target_visited and len(target_visited) < 50:
+                        if neighbor_puuid not in target_visited and len(target_visited) < 200:
                             new_path = path + [neighbor_puuid]
                             new_matches = connection_matches + [{
                                 'match_id': match_id,
@@ -1016,63 +1032,115 @@ if separation_button:
         current_tree = {'nodes': [], 'edges': []}
         
         def render_tree(tree_data):
-            """Render the current search tree"""
+            """Render the current search tree with hierarchical structure"""
             if not tree_data['nodes']:
                 return
             
-            # Build tree HTML
-            tree_html = '<div style="background: rgba(10, 14, 39, 0.6); padding: 1.5rem; border-radius: 12px; overflow-x: auto; margin-bottom: 1rem;">'
-            tree_html += '<div style="text-align: center; color: #667eea; font-weight: 600; margin-bottom: 1rem;">LIVE SEARCH NETWORK</div>'
+            # Build tree HTML with proper hierarchy
+            tree_html = '<div style="background: rgba(10, 14, 39, 0.6); padding: 2rem; border-radius: 12px; overflow-x: auto; margin-bottom: 1rem;">'
+            tree_html += '<div style="text-align: center; color: #667eea; font-weight: 600; margin-bottom: 2rem; font-size: 1.1rem;">LIVE SEARCH NETWORK</div>'
             
-            # Group nodes by depth
+            # Group nodes by depth and create parent-child relationships
             nodes_by_depth = {}
+            node_lookup = {}
             for node in tree_data['nodes']:
                 depth = node['depth']
                 if depth not in nodes_by_depth:
                     nodes_by_depth[depth] = []
                 nodes_by_depth[depth].append(node)
+                node_lookup[node['id']] = node
             
-            # Render each depth level
+            # Create edge lookup for parent-child relationships
+            children_by_parent = {}
+            for edge in tree_data['edges']:
+                parent = edge['from']
+                child = edge['to']
+                if parent not in children_by_parent:
+                    children_by_parent[parent] = []
+                children_by_parent[parent].append(child)
+            
+            # Render tree with hierarchical structure
+            tree_html += '<div style="display: flex; flex-direction: column; align-items: center; gap: 2rem;">'
+            
             for depth in sorted(nodes_by_depth.keys()):
-                tree_html += f'<div style="margin-bottom: 1.5rem;">'
-                tree_html += f'<div style="text-align: center; color: #888; margin-bottom: 0.5rem; font-size: 0.85rem;">Depth {depth}</div>'
-                tree_html += '<div style="display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">'
+                # Depth label
+                tree_html += f'<div style="width: 100%;">'
+                tree_html += f'<div style="text-align: center; color: #888; margin-bottom: 1rem; font-size: 0.9rem; font-weight: 600; letter-spacing: 1px;">DEPTH {depth}</div>'
+                
+                # Nodes at this depth
+                tree_html += '<div style="display: flex; justify-content: center; align-items: start; gap: 1.5rem; flex-wrap: wrap; position: relative;">'
                 
                 for node in nodes_by_depth[depth]:
+                    node_id = node['id']
+                    has_children = node_id in children_by_parent
+                    
                     # Color based on type
                     if node['type'] == 'source':
                         bg_color = '#667eea'
-                        border = '3px solid #667eea'
+                        border = '2px solid #8b9eff'
+                        glow = '0 0 20px rgba(102, 126, 234, 0.6)'
                     elif node['type'] == 'target':
                         bg_color = '#764ba2'
-                        border = '3px solid #764ba2'
+                        border = '2px solid #9d6bc4'
+                        glow = '0 0 20px rgba(118, 75, 162, 0.6)'
                     else:
-                        bg_color = 'rgba(72, 187, 120, 0.5)'
-                        border = '1px solid rgba(72, 187, 120, 0.8)'
+                        bg_color = 'rgba(72, 187, 120, 0.7)'
+                        border = '2px solid rgba(72, 187, 120, 0.9)'
+                        glow = '0 0 15px rgba(72, 187, 120, 0.4)'
                     
-                    tree_html += f'''<div style="background: {bg_color}; padding: 0.4rem 0.8rem; border-radius: 6px; border: {border}; font-size: 0.8rem; color: white; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: fadeIn 0.3s ease;">{node['name'].split('#')[0]}</div>'''
+                    # Node container with connecting line below if has children
+                    tree_html += f'<div style="display: flex; flex-direction: column; align-items: center; position: relative;">'
+                    
+                    # The node itself
+                    tree_html += f'''<div style="
+                        background: {bg_color}; 
+                        padding: 0.6rem 1rem; 
+                        border-radius: 8px; 
+                        border: {border};
+                        font-size: 0.85rem;
+                        font-weight: 600;
+                        color: white;
+                        min-width: 100px;
+                        max-width: 140px;
+                        text-align: center;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        box-shadow: {glow};
+                        animation: fadeIn 0.3s ease;
+                        position: relative;
+                        z-index: 10;
+                    ">{node['name'].split('#')[0]}</div>'''
+                    
+                    # Vertical line down if has children (only show in live view)
+                    if has_children and depth < max(nodes_by_depth.keys()):
+                        tree_html += f'<div style="width: 2px; height: 30px; background: linear-gradient(to bottom, {bg_color}, rgba(136, 136, 136, 0.5)); margin-top: -1px; z-index: 1;"></div>'
+                    
+                    tree_html += '</div>'
                 
                 tree_html += '</div></div>'
             
-            tree_html += '<style>@keyframes fadeIn {{ from {{ opacity: 0; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1); }} }}</style>'
+            tree_html += '</div>'
+            tree_html += '<style>@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-10px); }} to {{ opacity: 1; transform: translateY(0); }} }}</style>'
             tree_html += '</div>'
             
-            # Write to placeholder with components.html to avoid text echo
-            tree_placeholder.empty()
+            # Write to placeholder (no .empty() to prevent flashing)
             tree_placeholder.markdown(tree_html, unsafe_allow_html=True)
         
         def update_progress(players_checked, matches_checked, unique_players, tree_update=None):
             """Update progress and tree visualization"""
-            status_text.text(f"Checked {players_checked} players, {matches_checked} matches, {unique_players} unique players found...")
-            
-            if tree_update:
-                # Deep copy the tree data to avoid reference issues
-                import copy
-                current_tree['nodes'] = copy.deepcopy(tree_update['nodes'])
-                current_tree['edges'] = copy.deepcopy(tree_update['edges'])
-                render_tree(current_tree)
-                import time
-                time.sleep(0.1)  # Small delay to allow Streamlit to update
+            try:
+                status_text.text(f"Checked {players_checked} players, {matches_checked} matches, {unique_players} unique players found...")
+                
+                if tree_update:
+                    # Update tree data without deep copy (faster)
+                    current_tree['nodes'] = tree_update['nodes']
+                    current_tree['edges'] = tree_update['edges']
+                    render_tree(current_tree)
+                    # Removed sleep - Streamlit handles updates asynchronously
+            except Exception as e:
+                # Ignore WebSocket errors if browser disconnected
+                pass
         
         with st.spinner(f"Searching player network (checking {matches_to_check} matches per player)..."):
             result = asyncio.run(find_player_connection(
@@ -1108,48 +1176,84 @@ if separation_button:
                 final_tree_container = st.container()
                 
                 with final_tree_container:
-                    # Build the tree HTML
+                    # Build the tree HTML with hierarchical structure
                     tree_html = '<div style="background: rgba(10, 14, 39, 0.6); padding: 2rem; border-radius: 12px; overflow-x: auto;">'
                     
                     # Group nodes by depth
                     nodes_by_depth = {}
+                    node_lookup = {}
                     for node in search_tree['nodes']:
                         depth = node['depth']
                         if depth not in nodes_by_depth:
                             nodes_by_depth[depth] = []
                         nodes_by_depth[depth].append(node)
+                        node_lookup[node['id']] = node
+                    
+                    # Create edge lookup for parent-child relationships
+                    children_by_parent = {}
+                    for edge in search_tree['edges']:
+                        parent = edge['from']
+                        child = edge['to']
+                        if parent not in children_by_parent:
+                            children_by_parent[parent] = []
+                        children_by_parent[parent].append(child)
                     
                     # Create path set for highlighting
                     path_names_set = set(path)
                     
+                    # Render tree with hierarchical structure
+                    tree_html += '<div style="display: flex; flex-direction: column; align-items: center; gap: 2.5rem;">'
+                    
                     # Render each depth level
                     for depth in sorted(nodes_by_depth.keys()):
-                        tree_html += f'<div style="margin-bottom: 2rem;">'
-                        tree_html += f'<div style="text-align: center; color: #888; margin-bottom: 1rem; font-size: 0.9rem;">Depth {depth}</div>'
-                        tree_html += '<div style="display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">'
+                        tree_html += f'<div style="width: 100%;">'
+                        tree_html += f'<div style="text-align: center; color: #888; margin-bottom: 1.2rem; font-size: 0.95rem; font-weight: 600; letter-spacing: 1px;">DEPTH {depth}</div>'
+                        tree_html += '<div style="display: flex; justify-content: center; align-items: start; gap: 2rem; flex-wrap: wrap;">'
                         
                         for node in nodes_by_depth[depth]:
+                            node_id = node['id']
+                            has_children = node_id in children_by_parent
+                            
                             # Check if this node is in the solution path
                             is_in_path = node['name'] in path_names_set
                             
                             # Color based on type and path membership
                             if node['type'] == 'source':
                                 bg_color = '#667eea'
-                                border = '3px solid #667eea'
+                                border = '3px solid #8b9eff'
+                                glow = '0 0 25px rgba(102, 126, 234, 0.8)'
                             elif node['type'] == 'target':
                                 bg_color = '#764ba2'
-                                border = '3px solid #764ba2'
+                                border = '3px solid #9d6bc4'
+                                glow = '0 0 25px rgba(118, 75, 162, 0.8)'
                             else:
-                                bg_color = '#48bb78' if is_in_path else 'rgba(72, 187, 120, 0.3)'
-                                border = '2px solid #48bb78' if is_in_path else '1px solid rgba(255, 255, 255, 0.2)'
+                                if is_in_path:
+                                    bg_color = '#48bb78'
+                                    border = '3px solid #5fd98f'
+                                    glow = '0 0 20px rgba(72, 187, 120, 0.7)'
+                                else:
+                                    bg_color = 'rgba(72, 187, 120, 0.25)'
+                                    border = '1px solid rgba(72, 187, 120, 0.4)'
+                                    glow = 'none'
                             
-                            opacity = '1' if is_in_path else '0.4'
+                            opacity = '1' if is_in_path or node['type'] in ['source', 'target'] else '0.35'
                             
-                            tree_html += f'''<div style="background: {bg_color}; padding: 0.5rem 1rem; border-radius: 8px; border: {border}; font-size: 0.85rem; color: white; opacity: {opacity}; transition: all 0.3s ease; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{node['name'].split('#')[0]}</div>'''
+                            # Node container
+                            tree_html += f'<div style="display: flex; flex-direction: column; align-items: center;">'
+                            
+                            # The node
+                            tree_html += f'''<div style="background: {bg_color}; padding: 0.7rem 1.2rem; border-radius: 10px; border: {border}; font-size: 0.9rem; font-weight: 600; color: white; opacity: {opacity}; min-width: 110px; max-width: 160px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: {glow}; transition: all 0.3s ease; position: relative; z-index: 10;">{node['name'].split('#')[0]}</div>'''
+                            
+                            # Vertical line down if has children
+                            if has_children and depth < max(nodes_by_depth.keys()) and (is_in_path or node['type'] in ['source', 'target']):
+                                line_color = bg_color if opacity == '1' else 'rgba(136, 136, 136, 0.3)'
+                                tree_html += f'<div style="width: 3px; height: 35px; background: linear-gradient(to bottom, {line_color}, rgba(136, 136, 136, 0.3)); margin-top: -2px; z-index: 1; opacity: {opacity};"></div>'
+                            
+                            tree_html += '</div>'
                         
                         tree_html += '</div></div>'
                     
-                    tree_html += '</div>'
+                    tree_html += '</div></div>'
                     st.markdown(tree_html, unsafe_allow_html=True)
                 
                 st.markdown("---")

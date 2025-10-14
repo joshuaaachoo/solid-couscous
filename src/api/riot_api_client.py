@@ -54,7 +54,7 @@ class RiotApiClient:
 
     async def __aenter__(self):
         self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30),
+            timeout=aiohttp.ClientTimeout(total=15, connect=5),  # Reduced timeout: fail faster
             headers={"X-Riot-Token": self.api_key}
         )
         return self
@@ -71,7 +71,7 @@ class RiotApiClient:
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-    async def _make_request(self, url: str, max_retries: int = 3) -> Optional[Dict]:
+    async def _make_request(self, url: str, max_retries: int = 2) -> Optional[Dict]:  # Reduced retries from 3 to 2
         for attempt in range(max_retries):
             try:
                 self._check_rate_limit()
@@ -88,21 +88,27 @@ class RiotApiClient:
                     else:
                         logging.warning(f"API request failed: {response.status} - {url}")
                         if attempt < max_retries - 1:
-                            await asyncio.sleep(2 ** attempt)
+                            await asyncio.sleep(1)  # Reduced from 2^attempt
             except asyncio.TimeoutError:
                 logging.warning(f"Request timeout for {url}, attempt {attempt + 1}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)  # Reduced from 1 second
+                # Skip to next attempt or return None if max retries reached
             except Exception as e:
                 logging.error(f"Request error: {e}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)  # Reduced from 1 second
         return None
 
     async def get_match_timeline(self, match_id: str) -> Optional[dict]:
         url = f"{self.baseurls['match']}/lol/match/v5/matches/{match_id}/timeline"
         return await self._make_request(url)
 
+    async def get_account_by_riot_id(self, game_name: str, tag_line: str) -> Optional[Dict]:
+        """Get account info by Riot ID (game name + tag line)"""
+        account_url = f"{self.baseurls['account']}/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
+        return await self._make_request(account_url)
+    
     async def get_player_info(self, game_name: str, tag_line: str) -> Optional[PlayerInfo]:
         account_url = f"{self.baseurls['account']}/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
         account_data = await self._make_request(account_url)
