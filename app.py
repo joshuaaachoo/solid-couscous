@@ -226,18 +226,33 @@ st.markdown("""
         box-shadow: 0 12px 48px rgba(102, 126, 234, 0.3);
     }
     
-    /* Premium champion cards */
+    /* Premium champion cards with glassmorphism */
     .champion-card {
         text-align: center;
         padding: 0.75rem;
-        border-radius: 12px;
-        background: rgba(30, 30, 46, 0.6);
-        backdrop-filter: blur(10px);
-        border: 2px solid rgba(255, 255, 255, 0.1);
-        margin-bottom: 0.5rem;
-        transition: all 0.3s ease;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(30, 30, 46, 0.7) 0%, rgba(42, 42, 70, 0.6) 100%);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+        margin: 0 auto 0.5rem auto;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         position: relative;
         overflow: hidden;
+        width: 100%;
+    }
+    
+    .champion-card h4,
+    .champion-card p {
+        text-align: center !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        display: block !important;
+        width: 100% !important;
     }
     
     .champion-card::before {
@@ -257,8 +272,10 @@ st.markdown("""
     }
     
     .champion-card:hover {
-        transform: scale(1.05);
-        border-color: rgba(102, 126, 234, 0.5);
+        transform: translateY(-8px) scale(1.02);
+        border-color: rgba(102, 126, 234, 0.6);
+        box-shadow: 0 12px 48px 0 rgba(102, 126, 234, 0.5),
+                    inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
     }
     
     .champion-card.win {
@@ -389,6 +406,61 @@ st.markdown("""
     .stSlider > div > div > div {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
     }
+    
+    /* Mobile Responsive Design */
+    @media only screen and (max-width: 768px) {
+        /* Reduce title size on mobile */
+        .main-title {
+            font-size: 2.5rem !important;
+            line-height: 1.2;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem !important;
+        }
+        
+        /* Stack columns on mobile */
+        [data-testid="column"] {
+            min-width: 100% !important;
+            margin-bottom: 1rem;
+        }
+        
+        /* Make champion cards slightly smaller */
+        .champion-card {
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .champion-icon {
+            width: 48px;
+            height: 48px;
+        }
+        
+        /* Adjust section headers */
+        .section-header {
+            font-size: 1.5rem !important;
+        }
+        
+        /* Make buttons full width */
+        .stButton > button {
+            width: 100% !important;
+        }
+        
+        /* Reduce padding on mobile */
+        .main .block-container {
+            padding: 1rem !important;
+        }
+    }
+    
+    @media only screen and (max-width: 480px) {
+        .main-title {
+            font-size: 2rem !important;
+        }
+        
+        .champion-card {
+            font-size: 0.9rem;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -502,13 +574,38 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                                  progress_callback=None):
     """
     Find the shortest connection path between two players through shared matches.
-    Uses bidirectional DFS (searching from both players) with parallel API calls.
+    Uses bidirectional BFS with caching and aggressive parallelization.
     
     Returns: dict with 'path', 'degree', and 'matches' if found, or 'error' if not found
     """
     import time
+    from core.match_cache import MatchCache
     
     start_time = time.time()
+    cache = MatchCache()
+    
+    async def fetch_matches_with_cache(client, match_ids):
+        """Helper to fetch matches with caching"""
+        # Try cache first
+        cached = cache.get_match_batch(match_ids)
+        uncached = [mid for mid in match_ids if mid not in cached]
+        
+        # Fetch missing
+        if uncached:
+            tasks = [client.get_match_details(mid) for mid in uncached]
+            fetched = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Cache new ones
+            new_cache = {}
+            for mid, data in zip(uncached, fetched):
+                if data and not isinstance(data, Exception):
+                    new_cache[mid] = data
+            
+            if new_cache:
+                cache.put_match_batch(new_cache)
+            
+            return {**cached, **new_cache}
+        return cached
     
     riot_api_key = os.getenv('RIOT_API_KEY')
     if not riot_api_key:
@@ -598,16 +695,15 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
                 
                 # Skip players with too few matches (likely inactive)
-                if len(match_ids) < matches_per_player // 2:
+                if len(match_ids) < max(1, matches_per_player // 2):
                     continue
                 
                 batch_ids = match_ids[:matches_per_player]
+                all_matches = await fetch_matches_with_cache(client, batch_ids)
                 
-                match_tasks = [client.get_match_details(match_id) for match_id in batch_ids]
-                match_details_list = await asyncio.gather(*match_tasks, return_exceptions=True)
-                
-                for match_id, match_details in zip(batch_ids, match_details_list):
-                    if not match_details or isinstance(match_details, Exception):
+                for match_id in batch_ids:
+                    match_details = all_matches.get(match_id)
+                    if not match_details:
                         continue
                     
                     matches_checked += 1
@@ -720,16 +816,15 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
                 
                 # Skip players with too few matches (likely inactive)
-                if len(match_ids) < matches_per_player // 2:
+                if len(match_ids) < max(1, matches_per_player // 2):
                     continue
                 
                 batch_ids = match_ids[:matches_per_player]
+                all_matches = await fetch_matches_with_cache(client, batch_ids)
                 
-                match_tasks = [client.get_match_details(match_id) for match_id in batch_ids]
-                match_details_list = await asyncio.gather(*match_tasks, return_exceptions=True)
-                
-                for match_id, match_details in zip(batch_ids, match_details_list):
-                    if not match_details or isinstance(match_details, Exception):
+                for match_id in batch_ids:
+                    match_details = all_matches.get(match_id)
+                    if not match_details:
                         continue
                     
                     matches_checked += 1
@@ -882,10 +977,33 @@ async def analyze_player(game_name: str, tag_line: str, region: str):
         
         # Display recent matches
         st.markdown('<div class="section-header">RECENT RANKED SOLO/DUO MATCHES</div>', unsafe_allow_html=True)
-        num_cols = min(5, len(all_matches))
-        cols = st.columns(num_cols)
-        for i, match in enumerate(all_matches):
-            with cols[i % num_cols]:
+        
+        # Add CSS for fade-in animation
+        st.markdown("""
+        <style>
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            .match-card-animated {
+                animation: fadeInUp 0.6s ease-out forwards;
+                opacity: 0;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Use columns for side-by-side display with animation
+        cols_per_row = 5
+        for row_start in range(0, len(all_matches), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for col_idx, match_idx in enumerate(range(row_start, min(row_start + cols_per_row, len(all_matches)))):
+                match = all_matches[match_idx]
                 result = "WIN" if match.get('win') else "LOSS"
                 kda = (match.get('kills', 0) + match.get('assists', 0)) / max(match.get('deaths', 1), 1)
                 
@@ -893,22 +1011,31 @@ async def analyze_player(game_name: str, tag_line: str, region: str):
                 role = match.get('teamPosition', 'UNKNOWN').title() if match.get('teamPosition') else 'Unknown'
                 side = 'Blue' if match.get('teamId') == 100 else 'Red' if match.get('teamId') == 200 else ''
                 
-                champion_name = match.get('championName', 'Unknown')
+                # Clean champion name - remove any invisible characters
+                champion_name = match.get('championName', 'Unknown').strip()
                 icon_url = get_champion_icon_url(champion_name)
                 
                 # Card styling based on win/loss
                 card_class = "win" if match.get('win') else "loss"
                 
-                st.markdown(f"""
-                <div class="champion-card {card_class}">
-                    <img src="{icon_url}" class="champion-icon" onerror="this.style.display='none'">
-                    <h4 style="margin: 0.25rem 0;">{champion_name}</h4>
-                    <p style="font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{result}</p>
-                    <p style="margin: 0.25rem 0; font-size: 1.1rem;"><strong>KDA:</strong> {kda:.1f}</p>
-                    <p style="margin: 0.25rem 0; color: #888; font-size: 0.9rem;">{match.get('kills')}/{match.get('deaths')}/{match.get('assists')}</p>
-                    {'<p style="margin: 0.25rem 0; color: #888; font-size: 0.9rem;">' + side + ' • ' + role + '</p>' if role != 'Unknown' else ''}
-                </div>
-                """, unsafe_allow_html=True)
+                # Stagger animation delay
+                delay = match_idx * 0.15
+                
+                with cols[col_idx]:
+                    # Clean the champion name of any special characters that could cause alignment issues
+                    clean_name = ''.join(char for char in champion_name if char.isprintable()).strip()
+                    # Remove any quotes that might be in the name
+                    clean_name = clean_name.replace('"', '').replace("'", '').strip()
+                    
+                    st.markdown(f'''
+                    <div class="champion-card {card_class} match-card-animated" style="animation-delay: {delay}s;">
+                        <img src="{icon_url}" class="champion-icon" onerror="this.style.display='none'">
+                        <div style="text-align: center; font-size: 1.2rem; font-weight: bold; margin: 0.5rem 0;">{clean_name}</div>
+                        <p style="font-size: 1.2rem; font-weight: bold; text-align: center;">{result}</p>
+                        <p style="font-size: 1.1rem; text-align: center;"><strong>KDA:</strong> {kda:.1f}</p>
+                        <p style="color: #888; font-size: 0.9rem; text-align: center;">{match.get('kills')}/{match.get('deaths')}/{match.get('assists')}</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
         
         # Generate AI coaching
         player_data = {
@@ -932,7 +1059,7 @@ async def analyze_player(game_name: str, tag_line: str, region: str):
             season_summary = bedrock.generate_season_summary(player_data, ml_insights)
         
         st.markdown('<div class="section-header">PERFORMANCE ANALYSIS</div>', unsafe_allow_html=True)
-        st.markdown(season_summary)
+        st.markdown(f'<div style="font-size: 1.1rem; line-height: 1.8;">{season_summary}</div>', unsafe_allow_html=True)
         
         # Death Heatmap - Overall
         st.markdown('<div class="section-header">DEATH HEATMAP ANALYSIS</div>', unsafe_allow_html=True)
@@ -1022,14 +1149,14 @@ async def analyze_player(game_name: str, tag_line: str, region: str):
             champion_insights = bedrock.generate_champion_mastery_insights(player_data)
         
         st.markdown('<div class="section-header">CHAMPION MASTERY</div>', unsafe_allow_html=True)
-        st.markdown(champion_insights)
+        st.markdown(f'<div style="font-size: 1.1rem; line-height: 1.8;">{champion_insights}</div>', unsafe_allow_html=True)
         
         # Improvement Roadmap
         with st.spinner("Creating improvement roadmap..."):
             roadmap = bedrock.generate_improvement_roadmap(player_data, ml_insights)
         
         st.markdown('<div class="section-header">30-DAY IMPROVEMENT PLAN</div>', unsafe_allow_html=True)
-        st.markdown(roadmap)
+        st.markdown(f'<div style="font-size: 1.1rem; line-height: 1.8;">{roadmap}</div>', unsafe_allow_html=True)
 
 # Run analysis
 if analyze_button:
@@ -1158,7 +1285,25 @@ if separation_button:
         def update_progress(players_checked, matches_checked, unique_players, tree_update=None):
             """Update progress and tree visualization"""
             try:
-                status_text.text(f"Checked {players_checked} players, {matches_checked} matches, {unique_players} unique players found...")
+                # Calculate progress percentage (estimate based on depth)
+                estimated_total = (search_depth ** 2) * 10  # Rough estimate
+                progress_pct = min(int((players_checked / estimated_total) * 100), 95)
+                
+                # Update progress bar with custom styling
+                status_text.markdown(f"""
+                <div style="margin: 1rem 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span style="color: #667eea; font-weight: 600;">Searching player network...</span>
+                        <span style="color: #888;">{progress_pct}%</span>
+                    </div>
+                    <div style="background: rgba(102, 126, 234, 0.1); border-radius: 10px; height: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); height: 100%; width: {progress_pct}%; transition: width 0.3s ease; box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);"></div>
+                    </div>
+                    <div style="margin-top: 0.5rem; color: #999; font-size: 0.9rem;">
+                        {players_checked} players • {matches_checked} matches • {unique_players} unique players
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 if tree_update:
                     # Update tree data without deep copy (faster)
@@ -1195,9 +1340,133 @@ if separation_button:
             # Header with degree count
             st.success(f"**Connection Found!** {degree} degree{'s' if degree != 1 else ''} of separation")
             
-            # Search Tree Visualization
+            # Interactive Network Graph Visualization
             if search_tree['nodes']:
-                st.markdown("### SEARCH NETWORK")
+                st.markdown("### 🕸️ INTERACTIVE NETWORK GRAPH")
+                st.caption("Drag to pan • Scroll to zoom • Click nodes to explore")
+                
+                # Prepare data for vis.js
+                vis_nodes = []
+                vis_edges = []
+                path_names_set = set(path)
+                
+                for node in search_tree['nodes']:
+                    is_in_path = node['name'] in path_names_set
+                    node_color = '#667eea' if node['type'] == 'source' else '#764ba2' if node['type'] == 'target' else '#4caf50' if is_in_path else '#555'
+                    
+                    vis_nodes.append({
+                        'id': node['id'],
+                        'label': node['name'],
+                        'color': node_color,
+                        'size': 30 if is_in_path else 20,
+                        'font': {'color': '#fff', 'size': 14 if is_in_path else 12},
+                        'borderWidth': 3 if is_in_path else 1,
+                        'borderColor': '#ffd700' if is_in_path else node_color
+                    })
+                
+                for edge in search_tree['edges']:
+                    # Check if edge is in path
+                    from_node = next((n for n in search_tree['nodes'] if n['id'] == edge['from']), None)
+                    to_node = next((n for n in search_tree['nodes'] if n['id'] == edge['to']), None)
+                    is_path_edge = (from_node and to_node and 
+                                   from_node['name'] in path_names_set and 
+                                   to_node['name'] in path_names_set)
+                    
+                    vis_edges.append({
+                        'from': edge['from'],
+                        'to': edge['to'],
+                        'color': '#ffd700' if is_path_edge else '#444',
+                        'width': 3 if is_path_edge else 1,
+                        'arrows': {'to': {'enabled': True, 'scaleFactor': 0.5}}
+                    })
+                
+                import json
+                nodes_json = json.dumps(vis_nodes)
+                edges_json = json.dumps(vis_edges)
+                
+                # Create interactive vis.js network
+                st.components.v1.html(f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+                    <style>
+                        #mynetwork {{
+                            width: 100%;
+                            height: 600px;
+                            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+                            border-radius: 16px;
+                            border: 1px solid rgba(102, 126, 234, 0.3);
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div id="mynetwork"></div>
+                    <script type="text/javascript">
+                        var nodes = new vis.DataSet({nodes_json});
+                        var edges = new vis.DataSet({edges_json});
+                        
+                        var container = document.getElementById('mynetwork');
+                        var data = {{ nodes: nodes, edges: edges }};
+                        var options = {{
+                            nodes: {{
+                                shape: 'dot',
+                                font: {{ strokeWidth: 2, strokeColor: '#000' }},
+                                scaling: {{ min: 10, max: 30 }}
+                            }},
+                            edges: {{
+                                smooth: {{ type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.4 }},
+                                color: {{ inherit: false }}
+                            }},
+                            physics: {{
+                                enabled: true,
+                                barnesHut: {{
+                                    gravitationalConstant: -2000,
+                                    centralGravity: 0.3,
+                                    springLength: 150,
+                                    springConstant: 0.04,
+                                    damping: 0.09,
+                                    avoidOverlap: 0.5
+                                }},
+                                stabilization: {{ iterations: 150 }}
+                            }},
+                            interaction: {{
+                                hover: true,
+                                tooltipDelay: 200,
+                                navigationButtons: true,
+                                keyboard: true
+                            }}
+                        }};
+                        
+                        var network = new vis.Network(container, data, options);
+                        
+                        // Highlight on hover
+                        network.on("hoverNode", function(params) {{
+                            var nodeId = params.node;
+                            var connectedNodes = network.getConnectedNodes(nodeId);
+                            var connectedEdges = network.getConnectedEdges(nodeId);
+                            
+                            // Dim all nodes
+                            nodes.forEach(function(node) {{
+                                if (connectedNodes.indexOf(node.id) === -1 && node.id !== nodeId) {{
+                                    nodes.update({{id: node.id, opacity: 0.3}});
+                                }}
+                            }});
+                        }});
+                        
+                        network.on("blurNode", function(params) {{
+                            nodes.forEach(function(node) {{
+                                nodes.update({{id: node.id, opacity: 1}});
+                            }});
+                        }});
+                    </script>
+                </body>
+                </html>
+                """, height=650)
+            
+            # Collapsible detailed tree view
+            with st.expander("📊 View Detailed Search Tree"):
+                st.markdown("### SEARCH NETWORK DETAILS")
                 st.caption(f"Explored {len(search_tree['nodes'])} players across the network")
                 
                 # Create a container for the final tree
