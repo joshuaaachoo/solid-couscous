@@ -484,7 +484,7 @@ with col2:
     st.markdown("### SEVEN DEGREES")
     target_game_name = st.text_input("Target Player Name", placeholder="Enter target name")
     target_tag_line = st.text_input("Target Tag", placeholder="Enter target tag")
-    matches_to_check = st.slider("Matches Per Player", min_value=1, max_value=10, value=3, step=1,
+    matches_to_check = st.slider("Matches Per Player", min_value=1, max_value=10, value=2, step=1,
                                  help="How many recent matches to check for each player. More matches = better chance to find connection but slower.")
     st.caption("Bidirectional search: checks matches from both players simultaneously")
     separation_button = st.button("FIND CONNECTION", type="secondary", use_container_width=True)
@@ -498,7 +498,7 @@ def get_champion_icon_url(champion_name: str) -> str:
     return f"https://ddragon.leagueoflegends.com/cdn/14.20.1/img/champion/{champion_name}.png"
 
 async def find_player_connection(source_name: str, source_tag: str, target_name: str, target_tag: str, 
-                                 region: str, max_depth: int = 3, matches_per_player: int = 2,
+                                 region: str, max_depth: int = 2, matches_per_player: int = 1,
                                  progress_callback=None):
     """
     Find the shortest connection path between two players through shared matches.
@@ -576,7 +576,7 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
         while (source_queue or target_queue) and players_checked < max_players_to_check:
             # Process entire source level
             source_level_size = len(source_queue)
-            for _ in range(source_level_size):
+            for i in range(source_level_size):
                 if not source_queue or players_checked >= max_players_to_check:
                     break
                     
@@ -586,6 +586,14 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                     continue
                 
                 players_checked += 1
+                
+                # Update progress every player
+                if progress_callback and i % 3 == 0:
+                    try:
+                        total_visited = len(source_visited) + len(target_visited)
+                        progress_callback(players_checked, matches_checked, total_visited, tree_update=search_tree)
+                    except:
+                        pass
                 
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
                 
@@ -690,7 +698,7 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
             
             # Process entire target level
             target_level_size = len(target_queue)
-            for _ in range(target_level_size):
+            for i in range(target_level_size):
                 if not target_queue or players_checked >= max_players_to_check:
                     break
                     
@@ -700,6 +708,14 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                     continue
                 
                 players_checked += 1
+                
+                # Update progress every player
+                if progress_callback and i % 3 == 0:
+                    try:
+                        total_visited = len(source_visited) + len(target_visited)
+                        progress_callback(players_checked, matches_checked, total_visited, tree_update=search_tree)
+                    except:
+                        pass
                 
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
                 
@@ -1158,7 +1174,7 @@ if separation_button:
             result = asyncio.run(find_player_connection(
                 game_name, tag_line,
                 target_game_name, target_tag_line,
-                region, max_depth=3, matches_per_player=matches_to_check,
+                region, max_depth=2, matches_per_player=matches_to_check,
                 progress_callback=update_progress
             ))
         
