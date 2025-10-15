@@ -588,6 +588,11 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                 players_checked += 1
                 
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
+                
+                # Skip players with too few matches (likely inactive)
+                if len(match_ids) < matches_per_player // 2:
+                    continue
+                
                 batch_ids = match_ids[:matches_per_player]
                 
                 match_tasks = [client.get_match_details(match_id) for match_id in batch_ids]
@@ -697,6 +702,11 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                 players_checked += 1
                 
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
+                
+                # Skip players with too few matches (likely inactive)
+                if len(match_ids) < matches_per_player // 2:
+                    continue
+                
                 batch_ids = match_ids[:matches_per_player]
                 
                 match_tasks = [client.get_match_details(match_id) for match_id in batch_ids]
