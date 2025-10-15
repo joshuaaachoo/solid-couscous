@@ -484,8 +484,8 @@ with col2:
     st.markdown("### SEVEN DEGREES")
     target_game_name = st.text_input("Target Player Name", placeholder="Enter target name")
     target_tag_line = st.text_input("Target Tag", placeholder="Enter target tag")
-    matches_to_check = st.slider("Matches Per Player", min_value=1, max_value=10, value=2, step=1,
-                                 help="How many recent matches to check for each player. More matches = better chance to find connection but slower.")
+    search_depth = st.slider("Search Depth", min_value=1, max_value=4, value=2, step=1,
+                             help="Controls both depth levels and matches per player. Higher = more thorough but slower.")
     st.caption("Bidirectional search: checks matches from both players simultaneously")
     separation_button = st.button("FIND CONNECTION", type="secondary", use_container_width=True)
 
@@ -1170,11 +1170,11 @@ if separation_button:
                 # Ignore WebSocket errors if browser disconnected
                 pass
         
-        with st.spinner(f"Searching player network (checking {matches_to_check} matches per player)..."):
+        with st.spinner(f"Searching player network (depth {search_depth}, {search_depth} matches per player)..."):
             result = asyncio.run(find_player_connection(
                 game_name, tag_line,
                 target_game_name, target_tag_line,
-                region, max_depth=2, matches_per_player=matches_to_check,
+                region, max_depth=search_depth, matches_per_player=search_depth,
                 progress_callback=update_progress
             ))
         
