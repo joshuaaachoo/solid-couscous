@@ -572,23 +572,24 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
         matches_checked = 0
         max_players_to_check = 300
         
-        # Alternate between searching from source and target
+        # Process level-by-level (all nodes at depth N before depth N+1)
         while (source_queue or target_queue) and players_checked < max_players_to_check:
-            # Try from source side first
-            if source_queue:
-                current_puuid, path, connection_matches, depth = source_queue.pop(0)  # FIFO for BFS
+            # Process entire source level
+            source_level_size = len(source_queue)
+            for _ in range(source_level_size):
+                if not source_queue or players_checked >= max_players_to_check:
+                    break
+                    
+                current_puuid, path, connection_matches, depth = source_queue.pop(0)
                 
-                # Check if we've exceeded max depth
                 if depth >= max_depth:
                     continue
                 
                 players_checked += 1
                 
-                # Get match history for current player
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
                 batch_ids = match_ids[:matches_per_player]
                 
-                # Fetch matches in parallel
                 match_tasks = [client.get_match_details(match_id) for match_id in batch_ids]
                 match_details_list = await asyncio.gather(*match_tasks, return_exceptions=True)
                 
@@ -682,21 +683,22 @@ async def find_player_connection(source_name: str, source_tag: str, target_name:
                             source_visited[neighbor_puuid] = (new_path, new_matches)
                             source_queue.append((neighbor_puuid, new_path, new_matches, depth + 1))
             
-            # Try from target side
-            if target_queue:
-                current_puuid, path, connection_matches, depth = target_queue.pop(0)  # FIFO for BFS
+            # Process entire target level
+            target_level_size = len(target_queue)
+            for _ in range(target_level_size):
+                if not target_queue or players_checked >= max_players_to_check:
+                    break
+                    
+                current_puuid, path, connection_matches, depth = target_queue.pop(0)
                 
-                # Check if we've exceeded max depth
                 if depth >= max_depth:
                     continue
                 
                 players_checked += 1
                 
-                # Get match history for current player
                 match_ids = await client.get_match_history(current_puuid, count=matches_per_player, queue_type=None)
                 batch_ids = match_ids[:matches_per_player]
                 
-                # Fetch matches in parallel
                 match_tasks = [client.get_match_details(match_id) for match_id in batch_ids]
                 match_details_list = await asyncio.gather(*match_tasks, return_exceptions=True)
                 
