@@ -1057,9 +1057,49 @@ async def analyze_player(game_name: str, tag_line: str, region: str):
         # Season Summary
         with st.spinner("Generating AI coaching insights with Claude 3..."):
             season_summary = bedrock.generate_season_summary(player_data, ml_insights)
+            # Role checklist for UI badges
+            try:
+                role_check = bedrock.generate_role_checklist(player_data)
+            except Exception:
+                role_check = {"role": None, "items": []}
+            # Champion micro-tips
+            try:
+                champ_tips = bedrock.generate_champion_micro_tips(player_data)
+            except Exception:
+                champ_tips = {"champion": None, "tips": []}
         
         st.markdown('<div class="section-header">PERFORMANCE ANALYSIS</div>', unsafe_allow_html=True)
+        # Show role checklist badges above the summary if present
+        if role_check.get('items'):
+            role_name = role_check.get('role') or 'Player'
+            pills = ''.join(
+                f'<span style="display:inline-block; margin:0.2rem; padding:0.35rem 0.6rem; border-radius:999px; background:rgba(102,126,234,0.15); border:1px solid rgba(102,126,234,0.35); color:#dbe1ff; font-size:0.85rem;">{item}</span>'
+                for item in role_check['items'][:6]
+            )
+            st.markdown(
+                f'<div style="margin-bottom:0.75rem;"><span style="color:#8ea2ff; font-weight:700; margin-right:0.5rem;">{role_name} Checklist:</span>{pills}</div>',
+                unsafe_allow_html=True,
+            )
         st.markdown(f'<div style="font-size: 1.1rem; line-height: 1.8;">{season_summary}</div>', unsafe_allow_html=True)
+        # Champion micro-tips block
+        if champ_tips.get('tips'):
+            c = champ_tips.get('champion') or 'Champion'
+            tips_html = ''.join(
+                f'<li style="margin: 0.2rem 0;">{t}</li>' for t in champ_tips['tips']
+            )
+            # Confidence badge
+            src = champ_tips.get('source', 'ai')
+            conf = (champ_tips.get('confidence') or '').lower()
+            label = 'AI' if src == 'ai' else 'Heuristic'
+            color = '#4caf50' if conf == 'high' else ('#ff9800' if conf == 'medium' else '#9e9e9e')
+            badge = f'<span style="display:inline-block; margin-left:0.5rem; padding:0.15rem 0.5rem; border-radius:999px; border:1px solid {color}; color:{color}; font-size:0.75rem; vertical-align:middle;">{label}: {conf or 'n/a'}</span>'
+            st.markdown(
+                f'<div style="margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: 10px; background: rgba(118,75,162,0.12); border: 1px solid rgba(118,75,162,0.35);">'
+                f'<div style="color:#cdb3ff; font-weight:700; margin-bottom:0.3rem;">{c} Micro‑Tips {badge}</div>'
+                f'<ul style="margin:0; padding-left:1.2rem; color:#eae6ff;">{tips_html}</ul>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         
         # Death Heatmap - Overall
         st.markdown('<div class="section-header">DEATH HEATMAP ANALYSIS</div>', unsafe_allow_html=True)

@@ -19,7 +19,10 @@ class BedrockInsightsGenerator:
     
     def __init__(self, region: str = 'us-east-1'):
         self.region = region
-        self.model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+        # Prefer env override; default to a widely supported on-demand model
+        self.model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0")
+        # Optional: use an inference profile ARN if provided
+        self.inference_profile_arn = os.getenv("BEDROCK_INFERENCE_PROFILE_ARN")
         self.bedrock = None
         self.credentials_valid = False
         
@@ -119,6 +122,263 @@ class BedrockInsightsGenerator:
         except Exception as e:
             logging.error(f"❌ Bedrock invocation failed: {e}")
             return self._generate_fallback_response(prompt, max_tokens)
+
+    # ===== Role Inference Utilities =====
+    def _normalize_position(self, team_position: str, individual_position: str) -> Optional[str]:
+        """Map Riot positions to canonical roles: TOP, JUNGLE, MID, ADC, SUPPORT"""
+        tp = (team_position or "").upper()
+        ip = (individual_position or "").upper()
+        if tp in ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"):
+            if tp == "MIDDLE":
+                return "MID"
+            if tp == "BOTTOM":
+                return "ADC"
+            if tp == "UTILITY":
+                return "SUPPORT"
+            return tp
+        if ip in ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"):
+            if ip == "MIDDLE":
+                return "MID"
+            if ip == "BOTTOM":
+                return "ADC"
+            if ip == "UTILITY":
+                return "SUPPORT"
+            return ip
+        return None
+
+    def _infer_primary_role(self, matches: List[Dict]) -> Optional[str]:
+        """Infer player's primary role from recent Summoner's Rift matches by majority vote."""
+        role_counts: Dict[str, int] = {}
+        sr_queue_ids = {400, 420, 430, 440}
+        for match in matches or []:
+            queue_id = match.get('queueId') or match.get('info', {}).get('queueId')
+            if queue_id not in sr_queue_ids:
+                continue
+            team_position = match.get('teamPosition')
+            individual_position = match.get('individualPosition')
+            normalized = self._normalize_position(team_position, individual_position)
+            if normalized:
+                role_counts[normalized] = role_counts.get(normalized, 0) + 1
+        if not role_counts:
+            return None
+        return max(role_counts.items(), key=lambda kv: kv[1])[0]
+
+    def _build_role_context(self, role: Optional[str], stats: Dict) -> str:
+        """Create concise, role-aware guidance injected into prompts."""
+        if not role:
+            return ""
+        role = role.upper()
+        avg_vision = stats.get('avg_vision', 0)
+        cs_per_min = stats.get('cs_per_min', 0.0)
+        guidance = {
+            "SUPPORT": (
+                "You are primarily SUPPORT. De-emphasize CS. Prioritize: vision score and control wards, lane tempo for roams, peel and fight setup."
+            ),
+            "JUNGLE": (
+                "You are primarily JUNGLE. Focus: early pathing efficiency, objective setups, vision in river/entrances, and gank timing windows."
+            ),
+            "ADC": (
+                "You are primarily ADC. Focus: CS/min benchmarks, DPS uptime in fights, positioning and kite-spacing, and timing around item spikes."
+            ),
+            "MID": (
+                "You are primarily MID. Focus: wave control (crash/freeze), roam timers, skirmish setup with jungler, and side-lane transitions."
+            ),
+            "TOP": (
+                "You are primarily TOP. Focus: wave states for TP/flank windows, trading around cooldowns, and objective-side pressure."
+            ),
+        }
+        if role == "SUPPORT" and avg_vision:
+            return guidance[role] + f" Suggested target: vision score ≥ 1.2/min; control wards ≥ 1 per 8 min."
+        if role == "ADC" and cs_per_min:
+            return guidance[role] + f" Suggested target: CS/min ≥ {max(6.0, round(cs_per_min + 0.5, 1))}."
+        return guidance.get(role, "")
+
+    def generate_role_checklist(self, player_data: Dict) -> Dict:
+        """Return a compact, role-aware checklist for UI display.
+        Output: { role: str|None, items: [str] }
+        """
+        matches = player_data.get('matches', [])
+        role = self._infer_primary_role(matches)
+        # Basic aggregates for contextual targets
+        total_games = len(matches) or 1
+        avg_vision = sum(m.get('visionScore', 0) for m in matches) / total_games
+        total_cs = sum(m.get('totalMinionsKilled', 0) + m.get('neutralMinionsKilled', 0) for m in matches)
+        total_time = sum(m.get('gameDuration', 1800) for m in matches) / 60
+        cs_per_min = total_cs / max(total_time, 1)
+        items: List[str] = []
+        if role == "SUPPORT":
+            items = [
+                "Place control ward before each objective setup",
+                "Ward pixel/tri/river at 2:30–3:00 and on rotations",
+                "Roam on slow-push timings; return for crash",
+                f"Hit ≥ 1.2 vision score/min (current ~{avg_vision/ max(total_time/ total_games, 1):.1f}/min)",
+            ]
+        elif role == "JUNGLE":
+            items = [
+                "Lock first clear (no idle) and gank by 2:45–3:15",
+                "Secure first Herald or trade cross-map for Dragon",
+                "Maintain river entrances vision pre‑objective",
+                "Track enemy start via lane states and ward pixel",
+            ]
+        elif role == "ADC":
+            items = [
+                f"CS benchmarks: 80@10, 160@20 (current ~{cs_per_min:.1f}/min)",
+                "Fight on item spikes (BF/Noonquiver/2‑item)",
+                "Maximize DPS uptime; kite back on key CDs",
+                "Plate tempo: punish shove windows for plates",
+            ]
+        elif role == "MID":
+            items = [
+                "Crash→roam timings; shove before move",
+                "Ward raptors & pixel to cover both sides",
+                "Transfer to sides at 14–18 when mid plates fall",
+                "Sync skirmishes with jungler timers",
+            ]
+        elif role == "TOP":
+            items = [
+                "3rd‑wave freeze or crash based on matchup",
+                "TP timers aligned with Herald/Dragon fights",
+                "River/tri vision; track enemy jungler path",
+                "Trade around key cooldowns and wave states",
+            ]
+        return {"role": role, "items": items}
+
+    # ===== Champion Micro-Tips (curated, accuracy-first) =====
+    def _top_champions(self, matches: List[Dict], min_games: int = 3) -> List[str]:
+        counts: Dict[str, int] = {}
+        for m in matches or []:
+            name = m.get('championName') or ''
+            if not name:
+                continue
+            counts[name] = counts.get(name, 0) + 1
+        # Filter by minimum sample size
+        filtered = [c for c, n in counts.items() if n >= min_games]
+        if not filtered:
+            filtered = [c for c, _ in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:1]]
+        return filtered
+
+    def generate_champion_micro_tips(self, player_data: Dict) -> Dict:
+        """Use Bedrock to research champion micro-tips on demand (no local tip storage).
+        Returns a small, accuracy-focused list for the player's top champion.
+        Output: { champion: str|None, tips: [str] }
+        """
+        matches = player_data.get('matches', [])
+        top_list = self._top_champions(matches, min_games=3)
+        if not top_list:
+            return {"champion": None, "tips": []}
+        champion = top_list[0]
+
+        # Provide minimal context for role and stats to guide accurate advice
+        role = self._infer_primary_role(matches) or ""
+        total_games = len(matches) or 1
+        total_time = sum(m.get('gameDuration', 1800) for m in matches) / 60
+        total_cs = sum(m.get('totalMinionsKilled', 0) + m.get('neutralMinionsKilled', 0) for m in matches)
+        cs_per_min = total_cs / max(total_time, 1)
+
+        # Ask model for STRICT JSON output with 3-5 concise bullets, include guardrails against common misinformation
+        prompt = (
+            f"You are a high-Elo League of Legends coach. Provide ACCURATE, champion-specific micro-tips.\n"
+            f"Champion: {champion}\n"
+            f"Primary Role (if known): {role}\n"
+            f"Player CS/min (context): {cs_per_min:.1f}\n\n"
+            "Rules:\n"
+            "- Return STRICT JSON: {\"tips\": [\"...\", \"...\"]}\n"
+            "- 3 to 5 tips, each <= 110 characters, no emojis, no markdown.\n"
+            "- Use precise mechanics/positioning/objective timings relevant to the champion and role.\n"
+            "- Avoid generic filler. Prefer concrete, reproducible actions.\n"
+            "- Do NOT invent nonexistent mechanics (e.g., no \"animation cancel\" if champion lacks one).\n"
+            "- If unsure about a mechanic, skip it.\n"
+        )
+
+        raw = self._invoke_bedrock_model(prompt, max_tokens=300, temperature=0.3)
+        tips: List[str] = []
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and isinstance(data.get('tips'), list):
+                tips = [t for t in data['tips'] if isinstance(t, str) and t.strip()]
+        except Exception:
+            # Fallback: attempt to split lines and take non-empty bullets
+            lines = [ln.strip("- •\t ") for ln in raw.splitlines()]
+            tips = [ln for ln in lines if ln]
+
+        # Guardrail filtering: remove misinformation and role-inconsistent content
+        tips, filtered_out = self._filter_tips_by_role_and_safety(tips, role)
+
+        # As a safety fallback, use role heuristics if model response is empty after filtering
+        source = "ai"
+        confidence = "high" if tips and filtered_out == 0 else ("medium" if tips else "low")
+        if not tips:
+            role_fb = self._infer_primary_role(matches)
+            role_fallback = {
+                "SUPPORT": [
+                    "Ward pixel/tri pre‑objective; place control ward to deny setup",
+                    "Roam on slow‑push; return to catch crash and defend plates",
+                ],
+                "JUNGLE": [
+                    "First gank by 3:15 or cross‑map invade with lane prio",
+                    "Trade Herald/Dragon; communicate objective timers",
+                ],
+                "ADC": [
+                    "Hit CS@10 benchmarks; fight on item spike windows",
+                    "Maximize DPS uptime; kite back when frontline breaks",
+                ],
+                "MID": [
+                    "Crash→roam with vision; ward raptors/pixel both sides",
+                    "Cover side lanes at 14–18 when plates fall",
+                ],
+                "TOP": [
+                    "Freeze or crash by wave 3; track jungle before trades",
+                    "TP for Herald/Dragon; set up flanks over front-to-front",
+                ],
+            }
+            tips = role_fallback.get(role_fb or "ADC", [])
+            source = "fallback"
+            confidence = "low"
+
+        return {"champion": champion, "tips": tips[:5], "source": source, "confidence": confidence}
+
+    # Removed local catalog loading to rely on AI research each time
+
+    def _filter_tips_by_role_and_safety(self, tips: List[str], role: str) -> (List[str], int):
+        """Filter out likely-inaccurate or role-inconsistent tips.
+        Returns filtered tips and count removed.
+        """
+        if not tips:
+            return [], 0
+        deny_substrings = [
+            "animation cancel", "cancel animation", "orb reset", "auto reset on every ability", "frame perfect"
+        ]
+        role = (role or "").upper()
+        def is_role_consistent(t: str) -> bool:
+            s = t.lower()
+            if role == "SUPPORT":
+                # Avoid CS farming directives for support
+                if "cs" in s or "last hit" in s:
+                    return False
+                return True
+            if role == "JUNGLE":
+                # Encourage jungle concepts; allow general tips too
+                return True
+            # For ADC/MID/TOP allow CS mentions
+            return True
+        kept = []
+        removed = 0
+        for t in tips:
+            low = t.lower()
+            if any(bad in low for bad in deny_substrings):
+                removed += 1
+                continue
+            if not is_role_consistent(t):
+                removed += 1
+                continue
+            # Enforce brevity and no emojis
+            if any(ch in t for ch in ["😀","😁","😂","🤣","😍","🔥","💀","✨","💯"]):
+                removed += 1
+                continue
+            if len(t) > 130:
+                t = t[:128].rstrip()
+            kept.append(t)
+        return kept, removed
     
     def _generate_fallback_response(self, prompt: str, max_tokens: int) -> str:
         """Generate fallback response when Bedrock is unavailable"""
@@ -230,6 +490,13 @@ Write professional coaching advice with specific numbers, timing windows, and ac
         avg_vision = sum(m.get('visionScore', 0) for m in matches) / max(total_games, 1)
         avg_damage = sum(m.get('totalDamageDealtToChampions', 0) for m in matches) / max(total_games, 1)
         
+        # Role-aware context
+        primary_role = self._infer_primary_role(matches)
+        role_context = self._build_role_context(primary_role, {
+            'avg_vision': avg_vision,
+            'cs_per_min': cs_per_min
+        })
+
         prompt = f"""You are a Diamond+ League of Legends coach analyzing {player_info.get('name', 'a player')}'s ranked performance. Give SPECIFIC, TACTICAL advice.
 
 PERFORMANCE DATA:
@@ -238,10 +505,14 @@ PERFORMANCE DATA:
 • CS/min: {cs_per_min:.1f} | Vision Score: {avg_vision:.1f}/game
 • Avg Damage: {avg_damage:,.0f} per game
 • Main Champion: {most_played[0]} ({most_played[1]['games']} games, {most_played[1]['wins'] / max(most_played[1]['games'], 1):.1%} WR)
+ • Primary Role: {primary_role or 'Unknown'}
+
+ROLE CONTEXT:
+{role_context}
 
 Give brutally honest, specific coaching:
 
-1. **KDA Analysis**: If KDA < 2.0, they're dying too much - explain WHY (facechecking? bad trades? positioning?). If CS/min < 6, they're missing too much farm - give specific farming drills.
+1. **KDA Analysis**: If KDA < 2.0, they're dying too much — explain WHY (facechecking? bad trades? positioning?). If role is ADC/MID/TOP and CS/min < 6, include specific CS drills. If role is SUPPORT/JUNGLE, prioritize vision/objectives over CS.
 
 2. **Win Rate Reality Check**: If WR < 45%, identify the core issue (champion pool? macro? mechanics?). If WR > 55%, tell them what's working and how to maintain it.
 
@@ -253,6 +524,13 @@ Give brutally honest, specific coaching:
    - How to measure success
 
 5. **Rank Trajectory**: Based on stats, what rank should they aim for? What's the ONE stat holding them back?
+
+6. **Role-Specific Coaching Checklist** (use precise League terminology and numbers):
+   - SUPPORT: Control wards before Dragon/Herald, ward pixel/tri/river at 2:30–3:00, roam on slow push timings, peel priority targets, aim ≥ 1.2 vision score/min.
+   - JUNGLE: First clear path suggestion, first gank window (2:45–3:15), objective setups (Herald 8:00, Dragon ~5:00), track enemy jungle start via lane states.
+   - ADC: CS benchmarks (80@10, 160@20), spike timings (Noonquiver/BF → fight windows), spacing/kite targets, turret plate tempo.
+   - MID: Crash/roam timings, ward both sides (raptors/pixel), side lane transfer at 14–18, shove on respawn timers.
+   - TOP: Wave management (freeze at 3rd wave), TP timers for objective fights, ward river/tri, trade around key cooldowns.
 
 No fluff. No motivation speeches. Just tactical League advice like you're reviewing VODs together. 200-250 words."""
 
@@ -336,10 +614,19 @@ Keep it concise but insightful (150-200 words). Focus on practical advice they c
         else:
             avg_kda, avg_cs_per_min, win_rate = 1.0, 5.0, 0.5
         
-        # Identify biggest weakness
-        biggest_weakness = "farming" if avg_cs_per_min < 6 else "deaths" if avg_kda < 2.5 else "damage" if win_rate < 0.45 else "consistency"
+        # Role-aware weakness
+        primary_role = self._infer_primary_role(matches)
+        if primary_role == "SUPPORT":
+            biggest_weakness = "vision" if avg_vision < 25 else ("deaths" if avg_kda < 2.5 else "positioning")
+        elif primary_role == "JUNGLE":
+            biggest_weakness = "objective control" if avg_vision < 20 else ("deaths" if avg_kda < 2.5 else "pathing consistency")
+        elif primary_role == "ADC":
+            biggest_weakness = "farming" if avg_cs_per_min < 6 else ("deaths" if avg_kda < 2.5 else "damage")
+        else:
+            biggest_weakness = "farming" if avg_cs_per_min < 6 else ("deaths" if avg_kda < 2.5 else ("damage" if win_rate < 0.45 else "consistency"))
         
-        prompt = f"""Create a 30-day improvement plan. Be SPECIFIC with drills, numbers, and measurables.
+        role_hint = primary_role or "Unknown"
+        prompt = f"""Create a 30-day improvement plan tailored for a {role_hint}. Be SPECIFIC with drills, timings, and measurable targets.
 
 CURRENT STATS:
 • Win Rate: {win_rate:.1%} | KDA: {avg_kda:.2f} | CS/min: {avg_cs_per_min:.1f}
@@ -347,28 +634,33 @@ CURRENT STATS:
 
 **WEEK 1-2: Fix The Obvious Flaw**
 
-Daily Pre-Game Warm-up (10 min):
-- If CS < 6/min: Practice Tool - 80 CS by 10min, 5 days straight
-- If KDA < 2.5: Review last 3 deaths each game - WHY did you die?
-- If low damage: Practice Tool - combo on dummy, 10 reps
+Daily Pre-Game Warm-up (10–12 min):
+- If role = ADC/MID/TOP and CS < 6/min: Practice Tool - 80 CS by 10min, 5 days straight
+- If role = SUPPORT: 10 warding reps — control wards placed pre-objective; review 3 facechecks to eliminate
+- If role = JUNGLE: 10 pathing reps — fixed first three camps; smite/objective timers review
+- If KDA < 2.5: Review last 3 deaths each game — WHY did you die?
 
 Ranked Focus:
 - Play ONLY 3-5 games per day to avoid tilt
-- Specific goal: Improve weakest stat by 15%
-- Track: CS, deaths, damage after each game
+- Specific goal: Improve weakest stat by 15% (e.g., +0.2 CS/min for ADC; +0.2 wards/min for SUPPORT; +1 successful gank in first 10 for JUNGLE)
+- Track per match:
+  - ADC/MID/TOP: CS@10, deaths, major cooldown misuses
+  - SUPPORT: wards/min, control wards bought/used, roam success rate
+  - JUNGLE: first gank timing, objective secured/contested, farm/gank balance
 
 **WEEK 3-4: Advanced Concepts**
 
-Macro Drills:
-- Learn wave management (freeze/slow push/crash)
+Macro Drills (role-scoped):
+- Learn wave management (freeze/slow push/crash) [ADC/MID/TOP]
+- Vision traps and objective setups [SUPPORT/JUNGLE]
 - Watch 1 VOD per day: Note YOUR mistakes (timestamp them)
 - Jungle tracking: Ward pixel brush, track 3-camp start
 
-Measurable Goals:
-- CS/min: {avg_cs_per_min:.1f} → {avg_cs_per_min + 1:.1f}
-- Deaths/game: Reduce by 2
-- Vision score: Place 1.5 wards per minute
-- Win rate target: {win_rate:.0%} → {min(win_rate + 0.10, 0.65):.0%}
+ Measurable Goals (choose by role):
+ - ADC/MID/TOP: CS/min: {avg_cs_per_min:.1f} → {avg_cs_per_min + 1:.1f}; deaths/game: −2; spike fights aligned with items
+ - SUPPORT: wards/min ≥ 1.2; control wards ≥ 1/8 min; reduce facechecks to 0 for 3 games
+ - JUNGLE: secure first Herald or trade opposite; first gank ≤ 3:15; maintain vision in both rivers
+ - Win rate target: {win_rate:.0%} → {min(win_rate + 0.10, 0.65):.0%}
 
 **Daily Checklist:**
 ☐ 10min practice tool
@@ -686,11 +978,20 @@ Run another analysis in 5-10 games to track your improvement!"""
         """Generate all AI insights in one comprehensive package"""
         
         try:
+            # Optional fun insights (isolated module; safe if import fails)
+            fun_insights = None
+            try:
+                from .fun_insights import generate_fun_insights
+                fun_insights = generate_fun_insights(player_data)
+            except Exception as _e:
+                logging.debug(f"Fun insights unavailable: {_e}")
+
             insights_package = {
                 'season_summary': self.generate_season_summary(player_data, ml_insights),
                 'champion_mastery': self.generate_champion_mastery_insights(player_data),
                 'improvement_roadmap': self.generate_improvement_roadmap(player_data, ml_insights),
                 'social_comparison': self.generate_social_comparison(player_data, comparison_data) if comparison_data else None,
+                'fun_insights': fun_insights,
                 'generated_at': datetime.now().isoformat(),
                 'player_name': player_data.get('player_info', {}).get('name', 'Unknown Player')
             }
@@ -778,3 +1079,12 @@ if __name__ == "__main__":
     champion_insights = generator.generate_champion_mastery_insights(sample_player_data)
     print("Champion Insights:")
     print(champion_insights)
+
+    # Test fun insights (isolated)
+    try:
+        from .fun_insights import generate_fun_insights
+        fun = generate_fun_insights(sample_player_data)
+        print("\nFun Insights:")
+        print(json.dumps(fun, indent=2))
+    except Exception as e:
+        print(f"Fun insights unavailable: {e}")
